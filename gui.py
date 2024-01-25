@@ -1,10 +1,11 @@
+import time
 import os
 import tkinter as tk
 from tkinterdnd2 import TkinterDnD, DND_FILES
 from PIL import Image, ImageTk
 import socket
 import tkinter.messagebox as messagebox
-#import solid.py as solid
+import solid
 
 class SimpleGUI(TkinterDnD.Tk):
     def __init__(self):
@@ -48,11 +49,11 @@ class SimpleGUI(TkinterDnD.Tk):
     
 
     def on_drop(self, event):
-        file_path = event.data[1:-1]
+        folder_path = event.data[1:-1]
         
-        if os.path.isdir(file_path):
+        if os.path.isdir(folder_path):
             
-            file_names = os.listdir(file_path)
+            file_names = os.listdir(folder_path)
             
             sldprt_files = [file_name for file_name in file_names if file_name.endswith('.SLDPRT') and not file_name.startswith('~$')]
             sldasm_files = [file_name for file_name in file_names if file_name.endswith('.SLDASM') and not file_name.startswith('~$')]
@@ -61,14 +62,18 @@ class SimpleGUI(TkinterDnD.Tk):
                 self.drop_area.config(text="Hay más de un ensamblaje en la carpeta, envíe sólo uno.")
             elif sldprt_files:
                 self.drop_area.config(text="Procesando carpeta...")
+                time.sleep(1)
             
                 # Call the function from another_module with the file path as a parameter
-                #solid.folder(file_path)
-                
+                solid.folder(folder_path)
+                #finish program
+                self.destroy
+                return
+
             else:
-                self.drop_area.config(text="Ingrese una carpeta con piezas SolidWorks.")
+                self.drop_area.config(text="Ingrese una carpeta con piezas de SolidWorks.")
         else:
-            self.drop_area.config(text="Ingrese una carpeta con piezas SolidWorks.")
+            self.drop_area.config(text="Ingrese una carpeta con piezas de SolidWorks.")
 
     def check_wifi_connection(self):
         try:
@@ -90,3 +95,4 @@ if __name__ == "__main__":
     app = SimpleGUI()
     app.mainloop()
     
+ 
