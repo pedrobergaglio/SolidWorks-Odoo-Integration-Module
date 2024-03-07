@@ -20,6 +20,9 @@ swApp = None
 ensamble = {}
 piezas = []
 
+new_folder_path = ""
+folder_path = ""
+
 #importar referencias
 espesores = pd.read_excel(r".\resources\espesores.xlsx")
 insumos_piezas = pd.read_excel(r".\resources\insumos-piezas.xlsx")
@@ -101,10 +104,10 @@ def ensamble_odoo(ensamble, folder_path):
     folder_path_parts[-1] = ensamble["id"]+ " " + folder_path_parts[-1]
     
     # Join the parts back together
+    global new_folder_path
     new_folder_path = os.sep.join(folder_path_parts)
 
     os.rename(folder_path, new_folder_path)
-
 
 
 
@@ -136,7 +139,6 @@ def insert_pieza_odoo(pieza):
     # Get response data
     response_data = response.json()
     pieza["id"] = response_data.pop("id")
-
 
 def ordenar_valores (ancho, largo, grosor):
 
@@ -242,7 +244,6 @@ def process_sldasm(sldasm_files, folder_path):
             "tracking": "N° de CNC"
         }
 
-
 def process_sldprt(sldprt_file, folder_path):
 
     #escribir la ruta en el archivo input
@@ -344,8 +345,34 @@ def process_sldprt(sldprt_file, folder_path):
             "tracking": "N° de CNC"
         })
 
+def update_url_pieza(pieza):
+
+    #send request to odoo
+    url = "http://localhost:8069"
+    db = "odoo"
+    username = "admin"
+    password = "admin"
+    
+    #generar url
+    global new_folder_path
+    file_url = new_folder_path + "/" + pieza["name"] + ".SLDPRT"
+
+    # Convert data to JSON format
+    json_data = json.dumps(pieza)
+
+    # Send POST request
+    response = requests.post(url, auth=(username, password), data=json_data)
+
+    # Check response
+    if response.status_code != 200:
+        print(f"Request failed. Status code: {response.status_code}")
+        return
+
 #main donde inicia el procesamiento de la carpeta
-def folder(folder_path):
+def folder(input_folder_path):
+
+    global folder_path
+    folder_path = input_folder_path
 
     global swApp
 
@@ -399,13 +426,14 @@ def folder(folder_path):
 
     ensamble_odoo(ensamble, folder_path)
 
+    for pieza in piezas:
+        update_url_pieza(pieza)
+
 
 
     #finish program
     messagebox.showinfo("SolidWorks", "Proceso finalizado.")
     print("Proceso finalizado.")
-    return
-
     return
 
 # folder(r"C:\Users\Usuario\Downloads\04955 GAB-PEX-11")
