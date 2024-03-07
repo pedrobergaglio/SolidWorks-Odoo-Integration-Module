@@ -1,9 +1,13 @@
+import requests
+import json
 import os
 import win32com.client
 import tkinter as tk
 from tkinterdnd2 import TkinterDnD, DND_FILES
 import time
 import tkinter.messagebox as messagebox
+import pandas as pd
+import os
 
 # Specify your macro name and part file path
 macro_name = r".\Envío de piezas a Odoo\main.swp"
@@ -12,6 +16,14 @@ macro_name = r".\Envío de piezas a Odoo\main.swp"
 sldprt_files = []
 sldasm_files = []
 swApp = None
+
+ensamble = {}
+piezas = []
+
+#importar referencias
+espesores = pd.read_excel(r".\resources\espesores.xlsx")
+insumos_piezas = pd.read_excel(r".\resources\insumos-piezas.xlsx")
+peso_especifico = pd.read_excel(r".\resources\peso-especifico.xlsx")
 
 def run_solidworks_macro(swApp, macro_name):
     try:
@@ -55,14 +67,100 @@ def clean_data_files():
     clean_text_file_content("Grosor")
     clean_text_file_content("Error")
 
-def ensamble_odoo(file, masa, volumen, superficie, url):
-    print("Ensamble: ", file)
-    print(masa, "Kg", volumen, "mm3", superficie, "mm2")
+def ensamble_odoo(ensamble, folder_path):
+    #print("Ensamble: ", file)
+    #print(masa, "Kg", volumen, "mm3", superficie, "mm2")
 
-def pieza_odoo(file, masa, volumen, superficie, ancho, largo, grosor, url):
-    print("Pieza: ", file)
-    print(masa, "Kg", volumen, "mm3", superficie, "mm2")
-    print("Ancho:", ancho, "mm. Largo:", largo, "mm Espesor:", grosor, "mm.")
+    #send request to odoo
+    url = "http://localhost:8069"
+    db = "odoo"
+    username = "admin"
+    password = "admin"
+    
+    #do request
+
+    # Convert data to JSON format
+    json_data = json.dumps(ensamble)
+
+    # Send POST request
+    response = requests.post(url, auth=(username, password), data=json_data)
+
+    # Check response
+    if response.status_code != 200:
+        print(f"Request failed. Status code: {response.status_code}")
+        return
+
+    # Get response data
+    response_data = response.json()
+    ensamble["id"] = response_data.pop("id")
+
+    # Split the folder path
+    folder_path_parts = folder_path.split(os.sep)
+    
+    # Edit the last part of the folder path
+    folder_path_parts[-1] = ensamble["id"]+ " " + folder_path_parts[-1]
+    
+    # Join the parts back together
+    new_folder_path = os.sep.join(folder_path_parts)
+
+    os.rename(folder_path, new_folder_path)
+
+
+
+
+def insert_pieza_odoo(pieza):
+    print("Pieza: ", pieza.name)
+    print(pieza.weight, "Kg", pieza.volume, "mm3", pieza.surface, "mm2")
+    #print("Ancho:", ancho, "mm. Largo:", largo, "mm Espesor:", grosor, "mm.")
+
+    #send request to odoo
+
+    url = "http://localhost:8069"
+    db = "odoo"
+    username = "admin"
+    password = "admin"
+    
+    #do request
+
+    # Convert data to JSON format
+    json_data = json.dumps(pieza)
+
+    # Send POST request
+    response = requests.post(url, auth=(username, password), data=json_data)
+
+    # Check response
+    if response.status_code != 200:
+        print(f"Request failed. Status code: {response.status_code}")
+        return
+
+    # Get response data
+    response_data = response.json()
+    pieza["id"] = response_data.pop("id")
+
+
+def ordenar_valores (ancho, largo, grosor):
+
+    #turn into float, fst strip, then replace comma with dot
+    ancho = float(ancho.strip().replace(",", "."))
+    largo = float(largo.strip().replace(",", "."))
+    grosor = float(grosor.strip().replace(",", "."))
+     
+    if ancho > largo:
+        aux = ancho
+        ancho = largo
+        largo = aux
+
+    if largo < grosor:
+        aux = largo
+        largo = grosor
+        grosor = aux
+
+    if ancho < grosor:
+        aux = ancho
+        ancho = grosor
+        grosor = aux
+
+    return ancho, largo, grosor
 
 def process_sldasm(sldasm_files, folder_path):
 
@@ -96,51 +194,54 @@ def process_sldasm(sldasm_files, folder_path):
         error_text = get_text_file_content("Error")
         if error_text:
             if error_text:
-                messagebox.showerror("SolidWorks Error", error_text)
+                messagebox.showerror("Error de SolidWorks en el Ensamblaje", error_text)
                 return
 
         #recopilar los datos guardados
-
-        masa = get_text_file_content("Masa").strip()
         volumen = get_text_file_content("Volumen").strip()
         superficie = get_text_file_content("Superficie").strip()
-        #ancho = get_text_file_content("Ancho")
-        #largo = get_text_file_content("Largo")
-        #grosor = get_text_file_content("Grosor")
 
-        #generar url ruta
-        sldasm_file_path_url = sldasm_file_path.replace(" ", "%20")
-        sldasm_file_path_url = "file:///" + sldasm_file_path_url  # Update URL format
-        #enviar los datos a odoo
-        #no enviar grosor para los ensambles
+        #obtener tag_id a partir del nombre del archivo
+        #calcular masa a partir del peso específico
+        material = sldasm_files.split(" ")[0]
+        try:
+            material_tag = peso_especifico[peso_especifico["REFERENCIA"] == material]["TAG"]
+            if material_tag == "" or material_tag == None:
+                messagebox.showerror("Error", f"Error al encontrar el tag del material para archivo {sldasm_files}, por favor verifique que tiene asignado un valor correcto en TAG.")
+                return
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al encontrar la referencia al material en el archivo {sldasm_files}, por favor verifique que la referencia es correcta: {str(e)}")
+            return
 
-        ensamble_odoo(sldasm_files[0], masa, volumen, superficie, sldasm_file_path_url)
+        #calcular masa a partir del peso de las piezas
+        global ensamble
+        global piezas
+        #iterar sobre las piezas y sumar el net_weight y el gross_weight para obtener ambos valores totales
+        net_weight = 0
+        gross_weight = 0
+        ids = []
+        for pieza in piezas:
+            net_weight += pieza["weight"]
+            gross_weight += pieza["gross_weight"]
+            ids.append(pieza["id"])
+        
+        #save everything in a dictionary
+            
+        ensamble = {
+            "name": sldasm_files[0].split(".")[0],
+            "product_tag_ids": "Conjunto",
+            "weight": net_weight,
+            "gross_weight": gross_weight,
+            "volume": volumen,
+            "surface": superficie,
+            "categ_id": material_tag,
+            "sale_ok": "true",
+            "purchase_ok": "false",
+            "product_route": "Fabricar",
+            "tracking": "N° de CNC"
+        }
 
-        #renombrar la carpeta con el codigo del ensamble
-
-def ordenar_valores (ancho, largo, grosor):
-
-    #turn into float, fst strip, then replace comma with dot
-    ancho = float(ancho.strip().replace(",", "."))
-    largo = float(largo.strip().replace(",", "."))
-    grosor = float(grosor.strip().replace(",", "."))
-     
-    if ancho > largo:
-        aux = ancho
-        ancho = largo
-        largo = aux
-
-    if largo < grosor:
-        aux = largo
-        largo = grosor
-        grosor = aux
-
-    if ancho < grosor:
-        aux = ancho
-        ancho = grosor
-        grosor = aux
-
-    return ancho, largo, grosor
 
 def process_sldprt(sldprt_file, folder_path):
 
@@ -176,26 +277,74 @@ def process_sldprt(sldprt_file, folder_path):
                 return
 
         #recopilar los datos guardados
-
-        masa = get_text_file_content("Masa").strip()
         volumen = get_text_file_content("Volumen").strip()
         superficie = get_text_file_content("Superficie").strip()
         ancho = get_text_file_content("Ancho").strip()
         largo = get_text_file_content("Largo").strip()
-        grosor = get_text_file_content("Grosor").strip()
+        espesor = get_text_file_content("Grosor").strip()
 
-        #generar url ruta
-        sldprt_file_path_url = sldprt_file_path.replace(" ", "%20")
-        sldprt_file_path_url = "file:///" + sldprt_file_path_url  # Update URL format
+        #calcular masa a partir del peso específico
+        material = sldprt_file.split(" ")[0]
+        try:
+            peso_especifico_value = float(peso_especifico[peso_especifico["REFERENCIA"] == material]["VALOR"]) / 1
 
-        #codigo del ensamble parent
+            if peso_especifico_value == 0 or peso_especifico_value == None:
+                messagebox.showerror("Error", f"Error al encontrar el peso específico del material en el archivo {sldprt_file}, por favor verifique que tiene asignado un valor correcto en VALOR.")
+                return
+
+            net_weight = float(volumen) * peso_especifico_value
+            gross_weight = float(espesor) * float(ancho) * float(largo) * peso_especifico_value
+
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al encontrar la referencia al material en el archivo {sldprt_file}, por favor verifique que la referencia es correcta: {str(e)}")
+            return
+
+        try:
+            material_tag = peso_especifico[peso_especifico["REFERENCIA"] == material]["TAG"]
+
+            if material_tag == "" or material_tag == None:
+                messagebox.showerror("Error", f"Error al encontrar el tag del material para archivo {sldprt_file}, por favor verifique que tiene asignado un valor correcto en TAG.")
+                return
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al encontrar la referencia al material en el archivo {sldprt_file}, por favor verifique que la referencia es correcta: {str(e)}")
+            return
 
         #ordenar los valores
-        ancho, largo, grosor = ordenar_valores(ancho, largo, grosor)
+        ancho, largo, espesor = ordenar_valores(ancho, largo, espesor)
 
-        #enviar los datos a odoo
-        pieza_odoo(sldprt_file, masa, volumen, superficie, ancho, largo, grosor, sldprt_file_path_url)
+        #calcular espesor
+        espesor_values = espesores['ESPESOR'].values
+        # Find the closest value in espesor_values to espesor
+        espesor_found = min(espesor_values, key=lambda x:abs(float(x)-float(espesor)))
+        #get the value in col STRING in the same row as espesor_found
+        espesor_string = espesores[espesores['ESPESOR'] == espesor_found]['STRING']
 
+        #seleccion de insumo para la pieza
+        insumo = insumos_piezas[(insumos_piezas["ESPESOR"] == espesor_string) & (insumos_piezas["MATERIAL"] == material_tag)]["INSUMO"]
+        
+        #save everything in a dictionary
+        global piezas
+
+        piezas.append({
+            "name": sldprt_file.split(".")[0],
+            "product_tag_ids": "Piezas",
+            "weight": net_weight,
+            "gross_weight": gross_weight,
+            "volume": volumen,
+            "surface": superficie,
+            "broad": ancho,
+            "long": largo,
+            "categ_id": material_tag,
+            "thickness": espesor_string,
+            "sale_ok": "true",
+            "purchase_ok": "false",
+            "product_route": "Fabricar",
+            "tracking": "N° de CNC"
+        })
+
+#main donde inicia el procesamiento de la carpeta
 def folder(folder_path):
 
     global swApp
@@ -241,6 +390,16 @@ def folder(folder_path):
     #procesar cada pieza sldprt
     for sldprt_file in sldprt_files:
         process_sldprt(sldprt_file, folder_path)
+    
+    global ensamble
+    global piezas
+
+    for pieza in piezas:
+        insert_pieza_odoo(pieza)
+
+    ensamble_odoo(ensamble, folder_path)
+
+
 
     #finish program
     messagebox.showinfo("SolidWorks", "Proceso finalizado.")
