@@ -84,6 +84,8 @@ def ensamble_odoo(ensamble, folder_path):
 
     # Convert data to JSON format
     json_data = json.dumps(ensamble)
+    print(json_data)
+    return
 
     # Send POST request
     response = requests.post(url, auth=(username, password), data=json_data)
@@ -109,12 +111,7 @@ def ensamble_odoo(ensamble, folder_path):
 
     os.rename(folder_path, new_folder_path)
 
-
-
 def insert_pieza_odoo(pieza):
-    print("Pieza: ", pieza.name)
-    print(pieza.weight, "Kg", pieza.volume, "mm3", pieza.surface, "mm2")
-    #print("Ancho:", ancho, "mm. Largo:", largo, "mm Espesor:", grosor, "mm.")
 
     #send request to odoo
 
@@ -127,6 +124,8 @@ def insert_pieza_odoo(pieza):
 
     # Convert data to JSON format
     json_data = json.dumps(pieza)
+    print(json_data)
+    return
 
     # Send POST request
     response = requests.post(url, auth=(username, password), data=json_data)
@@ -170,6 +169,9 @@ def process_sldasm(sldasm_files, folder_path):
         path_file = r".\Envío de piezas a Odoo\Ruta.txt"
         sldasm_file_path = os.path.join(folder_path, sldasm_files[0])
         sldasm_file_path = sldasm_file_path.replace("\\", "/")  # Replace backslashes with forward slashes
+
+        #make the file path url
+        sldasm_file_path_url = "file:///" + sldasm_file_path.replace(" ", "%20")
         
         # Clean the file in path_file and write the sldasm file there
         with open(path_file, 'w') as file:
@@ -200,14 +202,14 @@ def process_sldasm(sldasm_files, folder_path):
                 return
 
         #recopilar los datos guardados
-        volumen = get_text_file_content("Volumen").strip()
-        superficie = get_text_file_content("Superficie").strip()
+        volumen = get_text_file_content("Volumen").strip().replace(",", ".")
+        superficie = get_text_file_content("Superficie").strip().replace(",", ".")
 
         #obtener tag_id a partir del nombre del archivo
         #calcular masa a partir del peso específico
-        material = sldasm_files.split(" ")[0]
+        material = sldasm_files[0].split(" ")[0]
         try:
-            material_tag = peso_especifico[peso_especifico["REFERENCIA"] == material]["TAG"]
+            material_tag = peso_especifico.loc[peso_especifico["REFERENCIA"] == material, "TAG"].item()
             if material_tag == "" or material_tag == None:
                 messagebox.showerror("Error", f"Error al encontrar el tag del material para archivo {sldasm_files}, por favor verifique que tiene asignado un valor correcto en TAG.")
                 return
@@ -226,12 +228,12 @@ def process_sldasm(sldasm_files, folder_path):
         for pieza in piezas:
             net_weight += pieza["weight"]
             gross_weight += pieza["gross_weight"]
-            ids.append(pieza["id"])
+            #ids.append(pieza["id"])
         
         #save everything in a dictionary
             
         ensamble = {
-            "name": sldasm_files[0].split(".")[0],
+            "name": " ".join(sldasm_files[0].split()[1:]).split(".")[0],
             "product_tag_ids": "Conjunto",
             "weight": net_weight,
             "gross_weight": gross_weight,
@@ -241,7 +243,8 @@ def process_sldasm(sldasm_files, folder_path):
             "sale_ok": "true",
             "purchase_ok": "false",
             "product_route": "Fabricar",
-            "tracking": "N° de CNC"
+            "tracking": "N° de CNC",
+            "product_route": sldasm_file_path_url,
         }
 
 def process_sldprt(sldprt_file, folder_path):
@@ -250,6 +253,9 @@ def process_sldprt(sldprt_file, folder_path):
         path_file = r".\Envío de piezas a Odoo\Ruta.txt"
         sldprt_file_path = os.path.join(folder_path, sldprt_file)
         sldprt_file_path = sldprt_file_path.replace("\\", "/")
+
+        #make the file path url
+        sldprt_file_path_url = "file:///" + sldprt_file_path.replace(" ", "%20")
 
         with open(path_file, 'w') as file:
             file.write(sldprt_file_path)
@@ -278,20 +284,22 @@ def process_sldprt(sldprt_file, folder_path):
                 return
 
         #recopilar los datos guardados
-        volumen = get_text_file_content("Volumen").strip()
-        superficie = get_text_file_content("Superficie").strip()
-        ancho = get_text_file_content("Ancho").strip()
-        largo = get_text_file_content("Largo").strip()
-        espesor = get_text_file_content("Grosor").strip()
+        volumen = get_text_file_content("Volumen").strip().replace(",", ".")
+        superficie = get_text_file_content("Superficie").strip().replace(",", ".")
+        ancho = get_text_file_content("Ancho").strip().replace(",", ".")
+        largo = get_text_file_content("Largo").strip().replace(",", ".")
+        espesor = get_text_file_content("Grosor").strip().replace(",", ".")
 
         #calcular masa a partir del peso específico
         material = sldprt_file.split(" ")[0]
         try:
-            peso_especifico_value = float(peso_especifico[peso_especifico["REFERENCIA"] == material]["VALOR"]) / 1
+            peso_especifico_value = float(peso_especifico.loc[peso_especifico["REFERENCIA"] == material, "VALOR"].item())
 
             if peso_especifico_value == 0 or peso_especifico_value == None:
                 messagebox.showerror("Error", f"Error al encontrar el peso específico del material en el archivo {sldprt_file}, por favor verifique que tiene asignado un valor correcto en VALOR.")
                 return
+            
+            peso_especifico_value = peso_especifico_value / 1000000
 
             net_weight = float(volumen) * peso_especifico_value
             gross_weight = float(espesor) * float(ancho) * float(largo) * peso_especifico_value
@@ -302,7 +310,8 @@ def process_sldprt(sldprt_file, folder_path):
             return
 
         try:
-            material_tag = peso_especifico[peso_especifico["REFERENCIA"] == material]["TAG"]
+            material_tag = peso_especifico.loc[peso_especifico["REFERENCIA"] == material, "TAG"].item()
+            
 
             if material_tag == "" or material_tag == None:
                 messagebox.showerror("Error", f"Error al encontrar el tag del material para archivo {sldprt_file}, por favor verifique que tiene asignado un valor correcto en TAG.")
@@ -319,17 +328,18 @@ def process_sldprt(sldprt_file, folder_path):
         espesor_values = espesores['ESPESOR'].values
         # Find the closest value in espesor_values to espesor
         espesor_found = min(espesor_values, key=lambda x:abs(float(x)-float(espesor)))
+        
         #get the value in col STRING in the same row as espesor_found
-        espesor_string = espesores[espesores['ESPESOR'] == espesor_found]['STRING']
+        espesor_string = espesores.loc[espesores['ESPESOR'] == espesor_found, 'STRING'].item()
 
         #seleccion de insumo para la pieza
-        insumo = insumos_piezas[(insumos_piezas["ESPESOR"] == espesor_string) & (insumos_piezas["MATERIAL"] == material_tag)]["INSUMO"]
+        insumo = insumos_piezas.loc[(insumos_piezas["ESPESOR"] == espesor_found) & (insumos_piezas["MATERIAL"] == material), "INSUMO"].item()
         
         #save everything in a dictionary
         global piezas
 
-        piezas.append({
-            "name": sldprt_file.split(".")[0],
+        pieza = {
+            "name": " ".join(sldprt_files[0].split()[1:]).split(".")[0],
             "product_tag_ids": "Piezas",
             "weight": net_weight,
             "gross_weight": gross_weight,
@@ -342,8 +352,13 @@ def process_sldprt(sldprt_file, folder_path):
             "sale_ok": "true",
             "purchase_ok": "false",
             "product_route": "Fabricar",
-            "tracking": "N° de CNC"
-        })
+            "tracking": "N° de CNC",
+            "product_route": sldprt_file_path_url
+        }
+
+        piezas.append(pieza)
+
+        print(pieza)
 
 def update_url_pieza(pieza):
 
@@ -356,6 +371,8 @@ def update_url_pieza(pieza):
     #generar url
     global new_folder_path
     file_url = new_folder_path + "/" + pieza["name"] + ".SLDPRT"
+
+    pieza["product_route"] = file_url
 
     # Convert data to JSON format
     json_data = json.dumps(pieza)
@@ -373,10 +390,16 @@ def folder(input_folder_path):
 
     global folder_path
     folder_path = input_folder_path
-
     global swApp
+    file_names = os.listdir(folder_path)
+    global sldasm_files
+    global sldprt_files    
+    sldprt_files = [file_name for file_name in file_names if file_name.endswith('.SLDPRT')]
+    sldasm_files = [file_name for file_name in file_names if file_name.endswith('.SLDASM')]
+    global ensamble
+    global piezas
 
-     # Connect to an existing SolidWorks instance or create a new one if not available
+    # Connect to an existing SolidWorks instance or create a new one if not available
     try:
         swApp = win32com.client.GetObject("SldWorks.Application")
     except:
@@ -401,40 +424,35 @@ def folder(input_folder_path):
                     return
                     break
                 continue"""
-
-    file_names = os.listdir(folder_path)
-
-    global sldasm_files
-    global sldprt_files
-            
-    sldprt_files = [file_name for file_name in file_names if file_name.endswith('.SLDPRT')]
-    sldasm_files = [file_name for file_name in file_names if file_name.endswith('.SLDASM')]
-
-    #check if there is a sldasm file
-    if sldasm_files:
-        process_sldasm(sldasm_files, folder_path)
            
     #procesar cada pieza sldprt
     for sldprt_file in sldprt_files:
         process_sldprt(sldprt_file, folder_path)
-    
-    global ensamble
-    global piezas
 
     for pieza in piezas:
         insert_pieza_odoo(pieza)
+    
+    #check if there is a sldasm file
+    if sldasm_files:
 
-    ensamble_odoo(ensamble, folder_path)
+        process_sldasm(sldasm_files, folder_path)
+        ensamble_odoo(ensamble, folder_path)
 
-    for pieza in piezas:
-        update_url_pieza(pieza)
+        #sólo si hay encamble se va a modificar la carpeta y la ruta
+        #for pieza in piezas:
+         #   update_url_pieza(pieza)
 
+    print("")
+    print("")
+    print("")
 
+    print(ensamble)
+    print(piezas)
 
     #finish program
     messagebox.showinfo("SolidWorks", "Proceso finalizado.")
     print("Proceso finalizado.")
     return
 
-# folder(r"C:\Users\Usuario\Downloads\04955 GAB-PEX-11")
+folder(r"C:\Users\Usuario\Downloads\04955 GAB-PEX-11")
 
