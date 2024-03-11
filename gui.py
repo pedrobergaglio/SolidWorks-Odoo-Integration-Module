@@ -15,6 +15,7 @@ import time
 import tkinter.messagebox as messagebox
 import pandas as pd
 import os
+import random
 
 
 # Specify your macro name and part file path
@@ -35,6 +36,9 @@ folder_path = ""
 espesores = pd.read_excel(r".\resources\espesores.xlsx")
 insumos_piezas = pd.read_excel(r".\resources\insumos-piezas.xlsx")
 peso_especifico = pd.read_excel(r".\resources\peso-especifico.xlsx")
+
+create_url = "http://ec2-3-15-193-242.us-east-2.compute.amazonaws.com:8069/itec-api/create/product"
+update_url = "http://ec2-3-15-193-242.us-east-2.compute.amazonaws.com:8069/itec-api/update/product"
 
 def run_solidworks_macro(swApp, macro_name):
     try:
@@ -83,29 +87,28 @@ def ensamble_odoo(ensamble, folder_path):
     #print(masa, "Kg", volumen, "mm3", superficie, "mm2")
 
     #send request to odoo
-    url = "http://localhost:8069"
-    db = "odoo"
-    username = "admin"
-    password = "admin"
+    global create_url
     
     #do request
 
     # Convert data to JSON format
     json_data = json.dumps(ensamble)
     print(json_data)
-    return
 
     # Send POST request
-    response = requests.post(url, auth=(username, password), data=json_data)
+    response = requests.get(create_url, data=json_data)
 
-    # Check response
-    if response.status_code != 200:
-        print(f"Request failed. Status code: {response.status_code}")
+    try:
+        if response.json()["result"]['status'] != 200:
+            print(f"Request failed. Error message: {response.json()['result']['message']}")
+            return
+    except KeyError:
+        print(f"Request failed. Error status: {response}")
         return
 
     # Get response data
-    response_data = response.json()
-    ensamble["id"] = response_data.pop("id")
+    #response_data = response.json()
+    ensamble["id"] = response.json()["result"]["default_code"]
 
     # Split the folder path
     folder_path_parts = folder_path.split(os.sep)
@@ -123,29 +126,35 @@ def insert_pieza_odoo(pieza):
 
     #send request to odoo
 
-    url = "http://localhost:8069"
-    db = "odoo"
-    username = "admin"
-    password = "admin"
+    global create_url
     
     #do request
+    params_pieza = {"params": pieza}
+    #add accept header
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+    }
 
     # Convert data to JSON format
-    json_data = json.dumps(pieza)
+    json_data = json.dumps(params_pieza)
     print(json_data)
-    return
 
     # Send POST request
-    response = requests.post(url, auth=(username, password), data=json_data)
+    response = requests.get(create_url, data=json_data, headers=headers)
 
     # Check response
-    if response.status_code != 200:
-        print(f"Request failed. Status code: {response.status_code}")
+    try:
+        if response.json()["result"]['status'] != 200:
+            print(f"Request failed. Error message: {response.json()['result']['message']}")
+            return
+    except KeyError:
+        print(f"Request failed. Error status: {response}")
         return
 
     # Get response data
-    response_data = response.json()
-    pieza["id"] = response_data.pop("id")
+    #response_data = response.json()
+    pieza["id"] = response.json()["result"]["default_code"]
 
 def ordenar_valores (ancho, largo, grosor):
 
@@ -232,16 +241,23 @@ def process_sldasm(sldasm_files, folder_path):
         #iterar sobre las piezas y sumar el net_weight y el gross_weight para obtener ambos valores totales
         net_weight = 0
         gross_weight = 0
+        superficie = 0
         ids = []
         for pieza in piezas:
             net_weight += pieza["weight"]
             gross_weight += pieza["gross_weight"]
-            #ids.append(pieza["id"])
+            superficie += pieza["superficie"]
+            ids.append({
+                 "default_code": pieza["id"],
+                 "quantity": pieza["quantity"]})
         
         #save everything in a dictionary
             
+        default_code = random.randint(0, 1000000)
+            
         ensamble = {
             "name": " ".join(sldasm_files[0].split()[1:]).split(".")[0],
+            "default_code": default_code,
             "product_tag_ids": "Conjunto",
             "weight": net_weight,
             "gross_weight": gross_weight,
@@ -251,8 +267,9 @@ def process_sldasm(sldasm_files, folder_path):
             "sale_ok": "true",
             "purchase_ok": "false",
             "product_route": "Fabricar",
-            "tracking": "N° de CNC",
+            #"tracking": "N° de CNC",
             "product_route": sldasm_file_path_url,
+            "bill_of_materials": ids
         }
 
 def process_sldprt(sldprt_file, folder_path):
@@ -342,17 +359,21 @@ def process_sldprt(sldprt_file, folder_path):
 
         #seleccion de insumo para la pieza
         insumo = insumos_piezas.loc[(insumos_piezas["ESPESOR"] == espesor_found) & (insumos_piezas["MATERIAL"] == material), "INSUMO"].item()
+        quantity = 1
         
         #save everything in a dictionary
         global piezas
+        volumen = float(volumen)/1000000
+        default_code = random.randint(0, 1000000)
 
         pieza = {
             "name": " ".join(sldprt_files[0].split()[1:]).split(".")[0],
+            "default_code": default_code,
             "product_tag_ids": "Piezas",
             "weight": net_weight,
             "gross_weight": gross_weight,
             "volume": volumen,
-            "surface": superficie,
+            "superficie": superficie,
             "broad": ancho,
             "long": largo,
             "categ_id": material_tag,
@@ -360,21 +381,24 @@ def process_sldprt(sldprt_file, folder_path):
             "sale_ok": "true",
             "purchase_ok": "false",
             "product_route": "Fabricar",
-            "tracking": "N° de CNC",
-            "product_route": sldprt_file_path_url
+            #"tracking": "N° de CNC",
+            "product_route": sldprt_file_path_url,
+            "bill_of_materials": [
+                {
+                    "default_code": insumo,
+                    "product_qty": gross_weight
+                    }
+                ],
         }
 
         piezas.append(pieza)
 
-        print(pieza)
+        #print(pieza)
 
 def update_url_pieza(pieza):
 
     #send request to odoo
-    url = "http://localhost:8069"
-    db = "odoo"
-    username = "admin"
-    password = "admin"
+    global update_url
     
     #generar url
     global new_folder_path
@@ -386,7 +410,7 @@ def update_url_pieza(pieza):
     json_data = json.dumps(pieza)
 
     # Send POST request
-    response = requests.post(url, auth=(username, password), data=json_data)
+    response = requests.get(url, auth=(username, password), data=json_data)
 
     # Check response
     if response.status_code != 200:
@@ -439,6 +463,8 @@ def folder(input_folder_path):
 
     for pieza in piezas:
         insert_pieza_odoo(pieza)
+    
+    return
     
     #check if there is a sldasm file
     if sldasm_files:
@@ -557,8 +583,10 @@ class SimpleGUI(TkinterDnD.Tk):
         except Exception:
             return False  # No WiFi connection
 
-if __name__ == "__main__":
+"""if __name__ == "__main__":
     app = SimpleGUI()
     app.mainloop()
     
- 
+ """
+
+folder(r"C:\Users\Usuario\Downloads\04955 GAB-PEX-11")
