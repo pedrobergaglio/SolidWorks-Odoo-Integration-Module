@@ -7,14 +7,8 @@ import socket
 import tkinter.messagebox as messagebox
 import requests
 import json
-import os
 import win32com.client
-import tkinter as tk
-from tkinterdnd2 import TkinterDnD, DND_FILES
-import time
-import tkinter.messagebox as messagebox
 import pandas as pd
-import os
 import random
 
 
@@ -100,10 +94,12 @@ def ensamble_odoo(ensamble, folder_path):
 
     try:
         if response.json()["result"]['status'] != 200:
-            print(f"Request failed. Error message: {response.json()['result']['message']}")
+            error_message = f"Envío de datos fallido. Mensaje de error: {response.json()['result']['message']}"
+            messagebox.showerror("Data Sending Error", error_message)
             return
-    except KeyError:
-        print(f"Request failed. Error status: {response}")
+    except:
+        error_message = f"Envío de datos fallido. Estado de error: {response}"
+        messagebox.showerror("Data Sending Error", error_message)
         return
 
     # Get response data
@@ -146,10 +142,12 @@ def insert_pieza_odoo(pieza):
     # Check response
     try:
         if response.json()["result"]['status'] != 200:
-            print(f"Request failed. Error message: {response.json()['result']['message']}")
+            error_message = f"Envío de datos fallido. Mensaje de error: {response.json()['result']['message']}"
+            messagebox.showerror("Data Sending Error", error_message)
             return
-    except KeyError:
-        print(f"Request failed. Error status: {response}")
+    except:
+        error_message = f"Envío de datos fallido. Estado de error: {response}"
+        messagebox.showerror("Data Sending Error", error_message)
         return
 
     # Get response data
@@ -410,11 +408,17 @@ def update_url_pieza(pieza):
     json_data = json.dumps(pieza)
 
     # Send POST request
-    response = requests.get(url, auth=(username, password), data=json_data)
+    response = requests.get(update_url, data=json_data)
 
     # Check response
-    if response.status_code != 200:
-        print(f"Request failed. Status code: {response.status_code}")
+    try:
+        if response.json()["result"]['status'] != 200:
+            error_message = f"Envío de datos fallido. Mensaje de error: {response.json()['result']['message']}"
+            messagebox.showerror("Data Sending Error", error_message)
+            return
+    except:
+        error_message = f"Envío de datos fallido. Estado de error: {response}"
+        messagebox.showerror("Data Sending Error", error_message)
         return
 
 #main donde inicia el procesamiento de la carpeta
@@ -510,11 +514,11 @@ class SimpleGUI(TkinterDnD.Tk):
         self.configure(bg="white")
 
         # Add window icon
-        icon_path = r"C:\Users\Usuario\Downloads\metalux-logo.ico"
+        icon_path = r".\resources\metalux-logo.ico"
         self.iconbitmap(icon_path)
 
         # Company logo label
-        logo_path = r"C:\Users\Usuario\Downloads\metalux brand.png"
+        logo_path = r".\resources\metalux brand.png"
         self.load_logo(logo_path)
 
         # Drag and drop area
@@ -586,7 +590,27 @@ class SimpleGUI(TkinterDnD.Tk):
 """if __name__ == "__main__":
     app = SimpleGUI()
     app.mainloop()
-    
- """
+    """
+
 
 folder(r"C:\Users\Usuario\Downloads\04955 GAB-PEX-11")
+
+data= {"params": 
+{"name": "03619 GAB-PEX-11-B V2", 
+"default_code": 550167, 
+"product_tag_ids": "Piezas", 
+"weight": 1.0420084037, 
+"gross_weight": 1.1209409240831998, 
+"volume": 0.13341977, 
+"superficie": "301092.89", 
+"broad": 251.52, 
+"long": 634.04, 
+"categ_id": "Chapa Galvanizada SAE 1010", 
+"thickness": 0.9, 
+"sale_ok": "true", 
+"purchase_ok": "false", 
+"product_route": "file:///C:/Users/Usuario/Downloads/04955%20GAB-PEX-11/G%2004956%20GAB-PEX-11-B%20V2.2%20CUERPO.SLDPRT", 
+"bill_of_materials": [{
+  "default_code": 20013, 
+  "product_qty": 1.1209409240831998
+}]}}
