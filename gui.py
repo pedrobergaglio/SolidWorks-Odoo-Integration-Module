@@ -23,7 +23,7 @@ swApp = None
 ensamble = {}
 piezas = []
 
-new_folder_path = ""
+new_folder = ""
 folder_path = ""
 
 #importar referencias
@@ -75,84 +75,6 @@ def clean_data_files():
     clean_text_file_content("Largo")
     clean_text_file_content("Grosor")
     clean_text_file_content("Error")
-
-def ensamble_odoo(ensamble, folder_path):
-    #print("Ensamble: ", file)
-    #print(masa, "Kg", volumen, "mm3", superficie, "mm2")
-
-    #send request to odoo
-    global create_url
-    
-    #do request
-
-    # Convert data to JSON format
-    json_data = json.dumps(ensamble)
-    print(json_data)
-
-    # Send POST request
-    response = requests.get(create_url, data=json_data)
-
-    try:
-        if response.json()["result"]['status'] != 200:
-            error_message = f"Envío de datos fallido. Mensaje de error: {response.json()['result']['message']}"
-            messagebox.showerror("Data Sending Error", error_message)
-            return
-    except:
-        error_message = f"Envío de datos fallido. Estado de error: {response}"
-        messagebox.showerror("Data Sending Error", error_message)
-        return
-
-    # Get response data
-    #response_data = response.json()
-    ensamble["id"] = response.json()["result"]["default_code"]
-
-    # Split the folder path
-    folder_path_parts = folder_path.split(os.sep)
-    
-    # Edit the last part of the folder path
-    folder_path_parts[-1] = ensamble["id"]+ " " + folder_path_parts[-1]
-    
-    # Join the parts back together
-    global new_folder_path
-    new_folder_path = os.sep.join(folder_path_parts)
-
-    os.rename(folder_path, new_folder_path)
-
-def insert_pieza_odoo(pieza):
-
-    #send request to odoo
-
-    global create_url
-    
-    #do request
-    params_pieza = {"params": pieza}
-    #add accept header
-    headers = {
-        "Accept": "application/json",
-        "Content-Type": "application/json"
-    }
-
-    # Convert data to JSON format
-    json_data = json.dumps(params_pieza)
-    print(json_data)
-
-    # Send POST request
-    response = requests.get(create_url, data=json_data, headers=headers)
-
-    # Check response
-    try:
-        if response.json()["result"]['status'] != 200:
-            error_message = f"Envío de datos fallido. Mensaje de error: {response.json()['result']['message']}"
-            messagebox.showerror("Data Sending Error", error_message)
-            return
-    except:
-        error_message = f"Envío de datos fallido. Estado de error: {response}"
-        messagebox.showerror("Data Sending Error", error_message)
-        return
-
-    # Get response data
-    #response_data = response.json()
-    pieza["id"] = response.json()["result"]["default_code"]
 
 def ordenar_valores (ancho, largo, grosor):
 
@@ -241,21 +163,22 @@ def process_sldasm(sldasm_files, folder_path):
         gross_weight = 0
         superficie = 0
         ids = []
-        for pieza in piezas:
-            net_weight += pieza["weight"]
-            gross_weight += pieza["gross_weight"]
-            superficie += pieza["superficie"]
-            ids.append({
-                 "default_code": pieza["id"],
-                 "quantity": pieza["quantity"]})
+        try:
+            for pieza in piezas:
+                net_weight += pieza["weight"]
+                gross_weight += pieza["gross_weight"]
+                superficie += float(pieza["superficie"])
+                
+                ids.append({
+                     "default_code": pieza["id"],
+                     "quantity": pieza["quantity"]})
+        except Exception as e:
+            messagebox.showerror("Error", f"Ocurrió un error procesando las piezas: {str(e)}")
         
         #save everything in a dictionary
             
-        default_code = random.randint(0, 1000000)
-            
         ensamble = {
             "name": " ".join(sldasm_files[0].split()[1:]).split(".")[0],
-            "default_code": default_code,
             "product_tag_ids": "Conjunto",
             "weight": net_weight,
             "gross_weight": gross_weight,
@@ -264,7 +187,6 @@ def process_sldasm(sldasm_files, folder_path):
             "categ_id": material_tag,
             "sale_ok": "true",
             "purchase_ok": "false",
-            "product_route": "Fabricar",
             #"tracking": "N° de CNC",
             "product_route": sldasm_file_path_url,
             "bill_of_materials": ids
@@ -344,6 +266,16 @@ def process_sldprt(sldprt_file, folder_path):
             messagebox.showerror("Error", f"Error al encontrar la referencia al material en el archivo {sldprt_file}, por favor verifique que la referencia es correcta: {str(e)}")
             return
 
+        #take quantity of pieces
+        quantity = 1
+        file_name_parts = sldprt_file.split()
+        if len(file_name_parts) > 1:
+            second_word = file_name_parts[1]
+            if second_word.isdigit():
+                quantity = int(second_word)
+                sldprt_file = " ".join([file_name_parts[0]] + sldprt_file.split()[2:])
+                print(sldprt_file)
+
         #ordenar los valores
         ancho, largo, espesor = ordenar_valores(ancho, largo, espesor)
 
@@ -357,16 +289,13 @@ def process_sldprt(sldprt_file, folder_path):
 
         #seleccion de insumo para la pieza
         insumo = insumos_piezas.loc[(insumos_piezas["ESPESOR"] == espesor_found) & (insumos_piezas["MATERIAL"] == material), "INSUMO"].item()
-        quantity = 1
         
         #save everything in a dictionary
         global piezas
         volumen = float(volumen)/1000000
-        default_code = random.randint(0, 1000000)
 
         pieza = {
-            "name": " ".join(sldprt_files[0].split()[1:]).split(".")[0],
-            "default_code": default_code,
+            "name": " ".join(sldprt_file.split()[1:]).split(".")[0],
             "product_tag_ids": "Piezas",
             "weight": net_weight,
             "gross_weight": gross_weight,
@@ -378,7 +307,6 @@ def process_sldprt(sldprt_file, folder_path):
             "thickness": espesor_string,
             "sale_ok": "true",
             "purchase_ok": "false",
-            "product_route": "Fabricar",
             #"tracking": "N° de CNC",
             "product_route": sldprt_file_path_url,
             "bill_of_materials": [
@@ -393,19 +321,100 @@ def process_sldprt(sldprt_file, folder_path):
 
         #print(pieza)
 
-def update_url_pieza(pieza):
+def ensamble_odoo(ensamble, folder_path):
+    #print("Ensamble: ", file)
+    #print(masa, "Kg", volumen, "mm3", superficie, "mm2")
 
+    #send request to odoo
+    global create_url
+    
+    #do request
+
+    # Convert data to JSON format
+    json_data = json.dumps(ensamble)
+    print(json_data)
+
+    # Send POST request
+    response = requests.get(create_url, data=json_data)
+
+    try:
+        if response.json()["result"]['status'] != 200:
+            error_message = f"Envío de datos fallido. Mensaje de error: {response.json()['result']['message']}"
+            messagebox.showerror("Data Sending Error", error_message)
+            return
+    except:
+        error_message = f"Envío de datos fallido. Estado de error: {response}"
+        messagebox.showerror("Data Sending Error", error_message)
+        return
+
+    # Get response data
+    #response_data = response.json()
+    ensamble["id"] = response.json()["result"]["default_code"]
+
+    # Split the folder path
+    folder_path_parts = folder_path.split(os.sep)
+    
+    # Edit the last part of the folder path
+    folder_path_parts[-1] = ensamble["id"]+ " " + folder_path_parts[-1]
+    
+    # Join the parts back together
+    global new_folder
+    new_folder = folder_path_parts[-1]
+
+    os.rename(folder_path, new_folder)
+
+def pieza_odoo(pieza):
+
+    #send request to odoo
+
+    global create_url
+
+    #take the col 'quantity' of pieza
+    _ = pieza.pop('quantity')
+    
+    #do request
+    params_pieza = {"params": pieza}
+    #add accept header
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+    }
+
+    # Convert data to JSON format
+    json_data = json.dumps(params_pieza)
+    print(json_data)
+
+    # Send POST request
+    response = requests.get(create_url, data=json_data, headers=headers)
+
+    # Check response
+    try:
+        if response.json()["result"]['status'] != 200:
+            error_message = f"Envío de datos fallido. Mensaje de error: {response.json()['result']['message']}"
+            messagebox.showerror("Data Sending Error", error_message)
+            return
+    except:
+        error_message = f"Envío de datos fallido. Estado de error: {response}"
+        messagebox.showerror("Data Sending Error", error_message)
+        return
+
+    # Get response data
+    #response_data = response.json()
+    pieza["id"] = response.json()["result"]["default_code"]
+
+def update_url(producto):
+    #file_url = new_folder + "/" + producto["name"] + ".SLDPRT"
     #send request to odoo
     global update_url
     
     #generar url
-    global new_folder_path
-    file_url = new_folder_path + "/" + pieza["name"] + ".SLDPRT"
-
-    pieza["product_route"] = file_url
+    global new_folder
+    route_parts = producto["product_route"].split(os.sep)
+    route_parts[-1] = new_folder
+    producto["product_route"] = os.sep.join(route_parts)
 
     # Convert data to JSON format
-    json_data = json.dumps(pieza)
+    json_data = json.dumps(producto)
 
     # Send POST request
     response = requests.get(update_url, data=json_data)
@@ -465,20 +474,22 @@ def folder(input_folder_path):
     for sldprt_file in sldprt_files:
         process_sldprt(sldprt_file, folder_path)
 
-    for pieza in piezas:
-        insert_pieza_odoo(pieza)
+    #for pieza in piezas:
+     #   pieza_odoo(pieza)
     
-    return
+    #return
     
     #check if there is a sldasm file
     if sldasm_files:
-
         process_sldasm(sldasm_files, folder_path)
         ensamble_odoo(ensamble, folder_path)
+        update_url(ensamble)
 
         #sólo si hay encamble se va a modificar la carpeta y la ruta
-        #for pieza in piezas:
-         #   update_url_pieza(pieza)
+        for pieza in piezas:
+            update_url(pieza)
+        
+        
 
     print("")
     print("")
