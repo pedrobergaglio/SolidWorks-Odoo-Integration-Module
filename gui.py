@@ -27,9 +27,9 @@ new_folder = ""
 folder_path = ""
 
 #importar referencias
-espesores = pd.read_excel(r".\resources\espesores.xlsx")
-insumos_piezas = pd.read_excel(r".\resources\insumos-piezas.xlsx")
-peso_especifico = pd.read_excel(r".\resources\peso-especifico.xlsx")
+espesores = pd.read_excel(r"espesores.xlsx")
+insumos_piezas = pd.read_excel(r"insumos-piezas.xlsx")
+peso_especifico = pd.read_excel(r"peso-especifico.xlsx")
 
 create_url = "http://ec2-3-15-193-242.us-east-2.compute.amazonaws.com:8069/itec-api/create/product"
 update_url = "http://ec2-3-15-193-242.us-east-2.compute.amazonaws.com:8069/itec-api/update/product"
