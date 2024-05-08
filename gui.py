@@ -10,10 +10,17 @@ import json
 import win32com.client
 import pandas as pd
 import random
+import sys
+import datetime
 
+# Open the log file in append mode
+log_file = open(r"C:\SolidWorks Data\Envío de piezas a Odoo\logfile.log", 'a')
 
-# Specify your macro name and part file path
-macro_name = r".\Envío de piezas a Odoo\main.swp"
+sys.stdout = log_file
+sys.stderr = log_file
+
+# Specify your macro name agui.pynd part file path
+macro_name = r"C:\SolidWorks Data\Envío de piezas a Odoo\main.swp"
 # "C:\Program Files\SOLIDWORKS Corp\SOLIDWORKS\SLDWORKS.exe" "C:\Users\Usuario\Downloads\08978 Puerta Tablero.SLDPRT"
 
 sldprt_files = []
@@ -23,18 +30,24 @@ swApp = None
 ensamble = {}
 piezas = []
 
-new_folder = ""
+error = False
+
+new_folder_path = ""
 folder_path = ""
 
 #importar referencias
-espesores = pd.read_excel(r"espesores.xlsx")
-insumos_piezas = pd.read_excel(r"insumos-piezas.xlsx")
-peso_especifico = pd.read_excel(r"peso-especifico.xlsx")
+espesores = pd.read_excel("espesores.xlsx")
+#print(espesores.head())
+insumos_piezas = pd.read_excel("insumos-piezas.xlsx")
+#print(insumos_piezas.head())
+peso_especifico = pd.read_excel("peso-especifico.xlsx")
+#print(peso_especifico.head())
 
 create_url = "http://ec2-3-15-193-242.us-east-2.compute.amazonaws.com:8069/itec-api/create/product"
 update_url = "http://ec2-3-15-193-242.us-east-2.compute.amazonaws.com:8069/itec-api/update/product"
 
 def run_solidworks_macro(swApp, macro_name):
+    global error
     try:
         # Connect to SolidWorks
         swApp.Visible = False
@@ -43,30 +56,37 @@ def run_solidworks_macro(swApp, macro_name):
         #swModel = swApp.OpenDoc(part_file_path, 1)  # 1 = swDocumentPart
 
         # Run your VBA macro
-        macro_full_path = os.path.join(os.path.expanduser("~"), "AppData\\Roaming\\SolidWorks\\SolidWorks 2019\\macros", macro_name)
-        macro_full_path = r"C:\Users\Usuario\Documents\Pedro\Solid Module\Envío de piezas a Odoo\main.swp"
+        #macro_full_path = os.path.join(os.path.expanduser("~"), "AppData\\Roaming\\SolidWorks\\SolidWorks 2019\\macros", macro_name)
+        macro_full_path = r"C:\SolidWorks Data\Envío de piezas a Odoo\main.swp"
+        print(datetime.datetime.now(), macro_full_path)
         swApp.RunMacro(macro_full_path, "main1", "main1")
 
         # Close the SolidWorks document
         #swApp.CloseDoc(swModel.GetTitle())
 
     except Exception as e:
-        print(f"Error: {str(e)}")
+         
+        print(datetime.datetime.now(), f"Error: {str(e)}")
         messagebox.showerror("SolidWorks Error", str(e))
-        return False
+        error = True
+        return
         
 def get_text_file_content(file_name):
-            file_path = os.path.join(os.getcwd(), "Envío de piezas a Odoo", file_name + ".txt")
+            global error
+            file_path = r"C:\SolidWorks Data\Envío de piezas a Odoo\\" + file_name + ".txt"
+            print(datetime.datetime.now(), "searching content in: ", file_path)
             with open(file_path, 'r') as file:
                 content = file.read()
             return content
 
 def clean_text_file_content(file_name):
-    file_path = os.path.join(os.getcwd(), "Envío de piezas a Odoo", file_name + ".txt")
+    global error
+    file_path = r"C:\SolidWorks Data\Envío de piezas a Odoo\\" + file_name + ".txt"
     with open(file_path, 'w') as file:
         file.write('')
 
 def clean_data_files():
+    global error
 
     clean_text_file_content("Masa")
     clean_text_file_content("Volumen")
@@ -76,7 +96,154 @@ def clean_data_files():
     clean_text_file_content("Grosor")
     clean_text_file_content("Error")
 
+def ensamble_odoo(ensamble, folder_path):
+    global error
+    
+    global create_url
+    # Convert data to JSON format
+    json_data = json.dumps({"params": ensamble})
+    print(ensamble)
+    
+    print(datetime.datetime.now(), json_data)
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+    }
+
+    try:
+        # Send get request
+        response = requests.get(create_url, data=json_data, headers=headers)
+
+        if 404 == response.status_code:
+            messagebox.showerror("Error en el envío", f"Se debe activar la integración del módulo con Odoo.")
+            print(datetime.datetime.now(), response.status_code)
+            error = True
+            return
+
+        if response.json()["result"]['status'] != "Ok":
+            error_message = response.json()['result']['message']
+            messagebox.showerror("Error en el envío", f"Mensaje del error: {error_message}")
+            print(datetime.datetime.now(), error_message)
+            error = True
+            return
+
+    except Exception as e:
+
+        try:
+
+            error_message = response.json()['result']['message']
+            if "Expected singleton" in error_message:
+                error_message = f"La pieza {ensamble['name']} ya existe en la base de datos."
+                print(datetime.datetime.now(), error_message)
+                
+            if response:
+                messagebox.showerror("Error en el envío", f"Falló el envío: {error_message}")
+            messagebox.showerror("Error en el envío", f"Falló el envío: {error_message}")
+            print(datetime.datetime.now(), f"Request failed. Error status: {error_message}, {str(e)}")
+            print(json_data)
+            error = True
+            return
+        except:
+            messagebox.showerror("Error en el envío", f"Falló el envío")
+            print(datetime.datetime.now(), f"Request failed. Error status: {str(e)}")
+            print(json_data)
+            error = True
+            
+
+    return
+    # Get response data
+    #response_data = response.json()
+    ensamble["id"] = response.json()["result"]["default_code"]
+
+    # Split the folder path
+    folder_path_parts = folder_path.split(os.sep)
+    
+    # Edit the last part of the folder path
+    folder_path_parts[-1] = ensamble["id"]+ " " + folder_path_parts[-1]
+    
+    # Join the parts back together
+    global new_folder_path
+    new_folder_path = os.sep.join(folder_path_parts)
+
+    os.rename(folder_path, new_folder_path)
+
+def insert_pieza_odoo(pieza):
+    global error
+
+    #send request to odoo
+
+    global create_url
+
+    #pop quantity out of the dictionary
+    data = pieza.copy()
+    data.pop("quantity")
+    #print(pieza)
+    
+    #do request
+    params_pieza = {"params": data}
+    #add accept header
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+    }
+
+    # Convert data to JSON format
+    json_data = json.dumps(params_pieza)
+    print(datetime.datetime.now(), json_data)
+
+    
+
+    # Check response
+    try:
+        # Send POST request
+        response = requests.get(create_url, data=json_data, headers=headers)    
+
+        if 404 == response.status_code:
+            messagebox.showerror("Error en el envío", f"Se debe activar la integración del módulo con Odoo.")
+            error_message = response.json()['result']['message']
+            print(datetime.datetime.now(), error_message)
+            error = True
+            return
+        
+        if response.json()["result"]['status'] == "Error":
+            
+            error_message = response.json()['result']['message']
+            if "Expected singleton" in error_message:
+                error_message = f"La pieza {ensamble['name']} ya existe en la base de datos."
+                print(datetime.datetime.now(), error_message)
+            messagebox.showerror("Error en el envío", f"{error_message}")
+            print(datetime.datetime.now(), error_message)
+            return
+            
+            
+
+        if response.json()["result"]['status'] != "Ok":
+            error_message = response.json()['result']['message']
+            if "Expected singleton" in error_message:
+                error_message = f"La pieza {ensamble['name']} ya existe en la base de datos."
+                print(datetime.datetime.now(), error_message)
+            messagebox.showerror("Request Failed", f"Request failed. Error status: {error_message}")
+            print(datetime.datetime.now(), f"217 Request failed. Error message: {error_message}")
+            error = True
+            return
+    except Exception as e:
+        if 404 == response.status_code:
+            messagebox.showerror("Error en el envío", f"Se debe activar la integración del módulo con Odoo.")
+            print(datetime.datetime.now(), response.status_code)
+            error = True
+            return
+        messagebox.showerror("Error en el envío", f"El envío sufrió un error inesperado. Por favor intente más tarde")
+        print(datetime.datetime.now(), f"Request failed. Error status: {str(e)}")
+        print(json_data)
+        error = True
+        return
+
+    # Get response data
+    #response_data = response.json()
+    pieza["id"] = response.json()["result"]["default_code"]
+
 def ordenar_valores (ancho, largo, grosor):
+    global error
 
     #turn into float, fst strip, then replace comma with dot
     ancho = float(ancho.strip().replace(",", "."))
@@ -101,14 +268,16 @@ def ordenar_valores (ancho, largo, grosor):
     return ancho, largo, grosor
 
 def process_sldasm(sldasm_files, folder_path):
+        global error
 
     #escribir la ruta en el archivo input
-        path_file = r".\Envío de piezas a Odoo\Ruta.txt"
+        path_file = r"C:\SolidWorks Data\Ruta.txt"
         sldasm_file_path = os.path.join(folder_path, sldasm_files[0])
         sldasm_file_path = sldasm_file_path.replace("\\", "/")  # Replace backslashes with forward slashes
 
         #make the file path url
-        sldasm_file_path_url = "file:///" + sldasm_file_path.replace(" ", "%20")
+        sldasm_file_path_url = ("file:///" + sldasm_file_path.replace(" ", "%20"))
+
         
         # Clean the file in path_file and write the sldasm file there
         with open(path_file, 'w') as file:
@@ -135,8 +304,10 @@ def process_sldasm(sldasm_files, folder_path):
         error_text = get_text_file_content("Error")
         if error_text:
             if error_text:
+                 
                 messagebox.showerror("Error de SolidWorks en el Ensamblaje", error_text)
-                return False
+                error = True
+                return
 
         #recopilar los datos guardados
         volumen = get_text_file_content("Volumen").strip().replace(",", ".")
@@ -148,13 +319,16 @@ def process_sldasm(sldasm_files, folder_path):
         try:
             material_tag = peso_especifico.loc[peso_especifico["REFERENCIA"] == material, "TAG"].item()
             if material_tag == "" or material_tag == None:
+                 
                 messagebox.showerror("Error", f"Error al encontrar el tag del material para archivo {sldasm_files}, por favor verifique que tiene asignado un valor correcto en TAG.")
-                return False
+                error = True
+                return
             
         except Exception as e:
+            
             messagebox.showerror("Error", f"Error al encontrar la referencia al material en el archivo {sldasm_files}, por favor verifique que la referencia es correcta: {str(e)}")
-            return False
-
+            error = True
+            return
         #calcular masa a partir del peso de las piezas
         global ensamble
         global piezas
@@ -163,25 +337,42 @@ def process_sldasm(sldasm_files, folder_path):
         gross_weight = 0
         superficie = 0
         ids = []
+        print(piezas)
         try:
+            
+            
             for pieza in piezas:
-                net_weight += pieza["weight"]
-                gross_weight += pieza["gross_weight"]
+                print(pieza)
+                print(pieza["quantity"])
+                net_weight += float(pieza["weight"])
+                gross_weight += float(pieza["gross_weight"])
                 superficie += float(pieza["superficie"])
-                
+                print(pieza["quantity"])
                 ids.append({
-                     "default_code": pieza["default_code"],
-                     "product_qty": pieza["quantity"]})
+                    "product_qty": pieza['quantity'],
+                    "default_code": pieza["id"]
+                })
         except Exception as e:
-            messagebox.showerror("Error", f"Ocurrió un error procesando las piezas: {str(e)}")
-            print("Error en pieza:")
-            print(pieza)
-            return False
+            
+
+            if "id" in str(e):
+
+                print("Error:", str(e))
+                messagebox.showerror("Error", "Las piezas del ensamble no están siendo correctamente cargadas por el sistema. Se recomienda cargar manualmente este ensamble con sus piezas.")
+                
+                error = True
+                return
+             
+            print("Error:", str(e))
+            messagebox.showerror("Error", "Error procesando el ensamble: " + str(e))
+            
+            error = True
+            return
         
         #save everything in a dictionary
             
         ensamble = {
-            "name": " ".join(sldasm_files[0].split()[1:]).split(".")[0],
+            'name': sldasm_files[0].split(".")[0],
             "product_tag_ids": "Conjunto",
             "weight": net_weight,
             "gross_weight": gross_weight,
@@ -190,29 +381,27 @@ def process_sldasm(sldasm_files, folder_path):
             "categ_id": material_tag,
             "sale_ok": "true",
             "purchase_ok": "false",
+            "product_route": "Fabricar",
             #"tracking": "N° de CNC",
             "product_route": sldasm_file_path_url,
             "bill_of_materials": ids
         }
-        
-        print("Ensamble procesado")
+        print(ensamble)
 
 def process_sldprt(sldprt_file, folder_path):
+        global error
 
     #escribir la ruta en el archivo input
-        path_file = r".\Envío de piezas a Odoo\Ruta.txt"
+        path_file = r"C:\SolidWorks Data\Ruta.txt"
         sldprt_file_path = os.path.join(folder_path, sldprt_file)
         sldprt_file_path = sldprt_file_path.replace("\\", "/")
 
         #make the file path url
         sldprt_file_path_url = "file:///" + sldprt_file_path.replace(" ", "%20")
 
-        try:
-            with open(path_file, 'w') as file:
-                file.write(sldprt_file_path)
-        except Exception as e:
-            messagebox.showerror("Error", f"Error writing to route file: {str(e)}")
-            return False
+        with open(path_file, 'w') as file:
+            file.write(sldprt_file_path)
+
         #clean files
         clean_data_files()
 
@@ -232,8 +421,13 @@ def process_sldprt(sldprt_file, folder_path):
 
         error_text = get_text_file_content("Error")
         if error_text:
-                messagebox.showerror("SolidWorks Error", error_text + " en el archivo " + sldprt_file)
-                return False
+            global error
+            if error_text:
+                 
+                messagebox.showerror("SolidWorks Error", error_text)
+                
+                error = True
+                return
 
         #recopilar los datos guardados
         volumen = get_text_file_content("Volumen").strip().replace(",", ".")
@@ -242,14 +436,25 @@ def process_sldprt(sldprt_file, folder_path):
         largo = get_text_file_content("Largo").strip().replace(",", ".")
         espesor = get_text_file_content("Grosor").strip().replace(",", ".")
 
+        print(datetime.datetime.now(),"archivo:", sldprt_file,  "volumen: ", volumen, "superficie: ", superficie, "ancho: ", ancho, "largo: ", largo, "espesor: ", espesor) 
+
         #calcular masa a partir del peso específico
-        material = sldprt_file.split(" ")[0]
+        #check if file name starts with a number
+        if sldprt_file.split(" ")[0].isdigit():
+            print(sldprt_file, "is digit")
+            material = sldprt_file.split(" ")[1]
+        else:
+            material = sldprt_file.split(" ")[0]
         try:
+            
             peso_especifico_value = float(peso_especifico.loc[peso_especifico["REFERENCIA"] == material, "VALOR"].item())
 
             if peso_especifico_value == 0 or peso_especifico_value == None:
+                 
                 messagebox.showerror("Error", f"Error al encontrar el peso específico del material en el archivo {sldprt_file}, por favor verifique que tiene asignado un valor correcto en VALOR.")
-                return False
+            
+                error = True
+                return
             
             peso_especifico_value = peso_especifico_value / 1000000
 
@@ -258,51 +463,88 @@ def process_sldprt(sldprt_file, folder_path):
 
             
         except Exception as e:
+            
+             
             messagebox.showerror("Error", f"Error al encontrar la referencia al material en el archivo {sldprt_file}, por favor verifique que la referencia es correcta: {str(e)}")
-            return False
+            
+            error = True
+            return
 
         try:
+            
             material_tag = peso_especifico.loc[peso_especifico["REFERENCIA"] == material, "TAG"].item()
             
 
             if material_tag == "" or material_tag == None:
+                 
                 messagebox.showerror("Error", f"Error al encontrar el tag del material para archivo {sldprt_file}, por favor verifique que tiene asignado un valor correcto en TAG.")
-                return False
+                
+                error = True
+                return
             
         except Exception as e:
+            
+             
             messagebox.showerror("Error", f"Error al encontrar la referencia al material en el archivo {sldprt_file}, por favor verifique que la referencia es correcta: {str(e)}")
-            return False
+            
+            error = True
+            return
+        try:
+            #ordenar los valores
+            ancho, largo, espesor = ordenar_valores(ancho, largo, espesor)
 
-        #take quantity of pieces
-        quantity = 1
-        file_name_parts = sldprt_file.split()
-        if len(file_name_parts) > 1:
-            second_word = file_name_parts[1]
-            if second_word.isdigit():
-                quantity = int(second_word)
-                sldprt_file = " ".join([file_name_parts[0]] + sldprt_file.split()[2:])
-                print(sldprt_file)
+            #calcular espesor
+            espesor_values = espesores['ESPESOR'].values
+            # Find the closest value in espesor_values to espesor
+            
+            espesor_found = min(espesor_values, key=lambda x:abs(float(x)-float(espesor)))
+            
+            #get the value in col STRING in the same row as espesor_found
+            espesor_string = espesores.loc[espesores['ESPESOR'] == espesor_found, 'STRING'].item()
+            print(espesor_found)
 
-        #ordenar los valores
-        ancho, largo, espesor = ordenar_valores(ancho, largo, espesor)
+        except Exception as e:
+            
+             
+            messagebox.showerror("Error", f"Error al encontrar el espesor del archivo {sldprt_file}, por favor verifique que está cargado en el archivo de espesores: {str(e)}")
+            print(f"Error al encontrar el espesor del archivo {sldprt_file}, por favor verifique que está cargado en el archivo de espesores: {str(e)}")
+            error = True
+            return
 
-        #calcular espesor
-        espesor_values = espesores['ESPESOR'].values
-        # Find the closest value in espesor_values to espesor
-        espesor_found = min(espesor_values, key=lambda x:abs(float(x)-float(espesor)))
-        
-        #get the value in col STRING in the same row as espesor_found
-        espesor_string = espesores.loc[espesores['ESPESOR'] == espesor_found, 'STRING'].item()
+        try:
+                    
+            #seleccion de insumo para la pieza
+            print(insumos_piezas)
+            print("inusmoo", insumos_piezas.loc[(insumos_piezas["ESPESOR"] == espesor_found) & (insumos_piezas["MATERIAL"] == material), "INSUMO"].values)
+            insumo = insumos_piezas.loc[(insumos_piezas["ESPESOR"] == espesor_found) & (insumos_piezas["MATERIAL"] == material), "INSUMO"].item()
+            print("insumo", insumo)
+            quantity = 1
 
-        #seleccion de insumo para la pieza
-        insumo = insumos_piezas.loc[(insumos_piezas["ESPESOR"] == espesor_found) & (insumos_piezas["MATERIAL"] == material), "INSUMO"].item()
-        
+        except Exception as e:
+            
+            
+            messagebox.showerror("Error", f"Error al encontrar el insumo de la pieza {sldprt_file}, por favor verifique que está cargado en el archivo de insumos correctamente: {str(e)}")
+
+            print(f"Error al encontrar el insumo de la pieza {sldprt_file}, por favor verifique que está cargado en el archivo de insumos correctamente: {str(e)}")
+            error = True
+            return
+
+        #check if file name starts with a number
+        if sldprt_file.split(" ")[0].isdigit():
+            print(sldprt_file, "has digit, updating quantity")
+            
+            quantity = sldprt_file.split(" ")[0]
+            #sldprt_file = " ".join(sldprt_file.split(" ")[1:])
+
         #save everything in a dictionary
         global piezas
         volumen = float(volumen)/1000000
+        default_code = random.randint(0, 1000000)
 
         pieza = {
-            "name": " ".join(sldprt_file.split()[1:]).split(".")[0],
+            'name': sldprt_file.split(".")[0],
+            "quantity": quantity,
+            "default_code": default_code,
             "product_tag_ids": "Piezas",
             "weight": net_weight,
             "gross_weight": gross_weight,
@@ -314,9 +556,9 @@ def process_sldprt(sldprt_file, folder_path):
             "thickness": espesor_string,
             "sale_ok": "true",
             "purchase_ok": "false",
+            "product_route": "Fabricar",
             #"tracking": "N° de CNC",
             "product_route": sldprt_file_path_url,
-            "quantity": quantity,
             "bill_of_materials": [
                 {
                     "default_code": insumo,
@@ -327,152 +569,34 @@ def process_sldprt(sldprt_file, folder_path):
 
         piezas.append(pieza)
 
-        #print(pieza)
+        print(pieza)
 
-def ensamble_odoo(ensamble, folder_path):
-    #print("Ensamble: ", file)
-    #print(masa, "Kg", volumen, "mm3", superficie, "mm2")
+"""def update_url_pieza(pieza):
+    global error
 
-    #send request to odoo
-    global create_url
-    
-    #do request
-    #add accept header
-    headers = {
-        "Accept": "application/json",
-        "Content-Type": "application/json"
-    }
-    data = {"params": ensamble}
-
-    # Convert data to JSON format
-    json_data = json.dumps(data)
-
-    # Send POST request
-    response = requests.get(create_url, headers=headers, data=json_data)
-
-    try:
-        if response.json()["result"]['status'] != "Ok":
-            error_message = f"Envío de datos fallido. Mensaje de error: {response.json()['result']['message']}"
-            messagebox.showerror("Data Sending Error", error_message)
-            print(json_data)
-            return False
-    except:
-        error_message = f"Envío de datos fallido. Estado de error: {response}"
-        messagebox.showerror("Data Sending Error", error_message)
-        print(json_data)
-        return False
-
-    # Get response data
-    print("Ensamble creado en Odoo: ", ensamble["name"])
-    return
-    #response_data = response.json()
-    ensamble["default_code"] = response.json()["result"]["default_code"]
-    print("default_code: ", ensamble["default_code"])
-
-    # Split the folder path
-    folder_path_parts = folder_path.split(os.sep)
-    
-    # Edit the last part of the folder path
-    print(folder_path_parts[-1])
-    new_folder_name = ensamble["default_code"] + " " + folder_path_parts[-1]
-    new_folder_path = os.path.join(*folder_path_parts[:-1], new_folder_name)
-    print(new_folder_path)
-
-    try:
-        #os.makedirs(new_folder_path, exist_ok=True)  # Create the new folder if it doesn't exist
-        os.rename(r'{}'.format(folder_path), r'{}'.format(new_folder_path))
-    except Exception as e:
-        messagebox.showerror("Error", f"Error occurred while renaming folder: {e}")
-        return False
-    
-    # Join the parts back together
-    global new_folder
-    new_folder = new_folder_name
-    
-
-def pieza_odoo(pieza):
-
-    #send request to odoo
-
-    global create_url
-
-    #take the col 'quantity' of pieza
-    quantity = pieza.pop('quantity')
-    
-    #do request
-    params_pieza = {"params": pieza}
-    #add accept header
-    headers = {
-        "Accept": "application/json",
-        "Content-Type": "application/json"
-    }
-
-    # Convert data to JSON format
-    json_data = json.dumps(params_pieza)
-
-    # Send POST request
-    response = requests.get(create_url, data=json_data, headers=headers)
-
-    # Check response
-    try:
-        if response.json()["result"]['status'] != "Ok":
-            error_message = f"Envío de datos fallido. Mensaje de error: {response.json()['result']['message']}"
-            messagebox.showerror("Data Sending Error", error_message)
-            print(json_data)
-            return False
-    except:
-        error_message = f"Envío de datos fallido. Estado de error: {response}"
-        messagebox.showerror("Data Sending Error", error_message)
-        print(json_data)
-        return False
-
-    print("Pieza creada en Odoo: ", pieza["name"])
-    # Get response data
-    #response_data = response.json()
-    pieza["default_code"] = response.json()["result"]["default_code"]
-    pieza["quantity"] = quantity
-
-def func_update_url(producto):
-    #file_url = new_folder + "/" + producto["name"] + ".SLDPRT"
     #send request to odoo
     global update_url
     
     #generar url
-    #add accept header
-    headers = {
-        "Accept": "application/json",
-        "Content-Type": "application/json"
-    }
-    global new_folder
-    route_parts = producto["product_route"].split(os.sep)
-    route_parts[-1] = new_folder
-    producto["product_route"] = os.sep.join(route_parts)
+    global new_folder_path
+    file_url = new_folder_path + "/" + pieza["name"] + ".SLDPRT"
 
-    #print(producto)
-
-    data = {"params": producto}
+    pieza["product_route"] = file_url
 
     # Convert data to JSON format
-    json_data = json.dumps(data)
+    json_data = json.dumps(pieza)
 
     # Send POST request
-    response = requests.get(update_url, headers=headers, data=json_data)
+    response = requests.get(url, auth=(username, password), data=json_data)
 
     # Check response
-    try:
-        if response.json()["result"]['status'] != "Ok":
-            error_message = f"Envío de datos fallido. Mensaje de error: {response.json()['result']['message']}"
-            messagebox.showerror("Data Sending Error", error_message)
-            return False
-    except:
-        error_message = f"Actualización de datos fallida. Estado de error: {response}"
-        messagebox.showerror("Data Sending Error", error_message)
-        return False
-    
-    print("URL actualizada en Odoo: ", producto["name"])
-
+    if response.status_code != "Ok":
+        print(datetime.datetime.now(), f"Request failed. Status code: {response.status_code}")
+        return
+"""
 #main donde inicia el procesamiento de la carpeta
 def folder(input_folder_path):
+    global error
 
     global folder_path
     folder_path = input_folder_path
@@ -480,15 +604,8 @@ def folder(input_folder_path):
     file_names = os.listdir(folder_path)
     global sldasm_files
     global sldprt_files    
-    sldprt_files = [file_name for file_name in file_names if file_name.endswith('.SLDPRT') and os.path.isfile(os.path.join(folder_path, file_name))]
-    sldasm_files = [file_name for file_name in file_names if file_name.endswith('.SLDASM') and os.path.isfile(os.path.join(folder_path, file_name))]
-
-    # Clean sldprt_files
-    sldprt_files = [file_name for file_name in sldprt_files if not file_name.startswith('~')]
-    # Clean sldasm_files
-    sldasm_files = [file_name for file_name in sldasm_files if not file_name.startswith('~')]
-
-    print(sldprt_files)
+    sldprt_files = [file_name for file_name in file_names if file_name.endswith('.SLDPRT')]
+    sldasm_files = [file_name for file_name in file_names if file_name.endswith('.SLDASM')]
     global ensamble
     global piezas
 
@@ -496,7 +613,7 @@ def folder(input_folder_path):
     try:
         swApp = win32com.client.GetObject("SldWorks.Application")
     except:
-
+        global error
         swApp = win32com.client.Dispatch("SldWorks.Application")
 
         """print("SolidWorks no está abierto. Abriendo SolidWorks...")
@@ -520,57 +637,36 @@ def folder(input_folder_path):
            
     #procesar cada pieza sldprt
     for sldprt_file in sldprt_files:
-        res = process_sldprt(sldprt_file, folder_path)
-        if res == False:
-            return
-    
-    print(piezas)
-    
+        if not sldprt_file.startswith("~") and not sldprt_file.startswith("$"):
+            process_sldprt(sldprt_file, folder_path)
+            if error == True:
+                return
+            print("Pieza analizada")
 
     for pieza in piezas:
-        res = pieza_odoo(pieza)
-        if res == False:
+        print(datetime.datetime.now(), pieza['name'])
+        insert_pieza_odoo(pieza)
+        if error == True:
             return
-        
+        print("Pieza enviada")
     
-    #return
+    
     
     #check if there is a sldasm file
     if sldasm_files:
-        print("Procesando ensamble...")
-        res = process_sldasm(sldasm_files, folder_path)
-        if res == False:
-            return
-        res = ensamble_odoo(ensamble, folder_path)
-        if res == False:
-            return
-        return
-        res = func_update_url(ensamble)
-        if res == False:
-            return
 
-        #sólo si hay encamble se va a modificar la carpeta y la ruta
-        for pieza in piezas:
-            res = func_update_url(pieza)
-            if res == False:
-                return
-    
-    print(new_folder)
+        process_sldasm(sldasm_files, folder_path)
+        if error == True:
+            return
+        ensamble_odoo(ensamble, folder_path)
+        if error == True:
+            return
+        print("Ensamble enviado")
 
-
-    #finish program
+         
+    print(datetime.datetime.now(), "Proceso finalizado.")
     messagebox.showinfo("SolidWorks", "Proceso finalizado.")
-    print("Proceso finalizado.")
     return
-
-
-
-
-
-
-
-
-
 
 
 
@@ -611,36 +707,61 @@ class SimpleGUI(TkinterDnD.Tk):
             self.logo_label = tk.Label(self, image=self.logo_image, bg="white")
             self.logo_label.place(relx=1, rely=0, anchor="ne")  # Adjusted position to the right
         except Exception as e:
+             
             messagebox.showerror("Error", f"Error loading logo: {e}")
+            
+            error = True
+            return
 
     
 
     def on_drop(self, event):
-        folder_path = event.data[1:-1]
+
+        self.drop_area.config(text="Procesando carpeta...")
+        
+        
+        folder_path = event.data#[1:-1]
+
+        if folder_path[0] == '{' or folder_path[0] == '$':
+            folder_path = folder_path[1:]
+
+        if folder_path[-1] == '}' or folder_path[-1] == '$':
+            folder_path = folder_path[:-1]
+
+        print(datetime.datetime.now(), folder_path)
         
         if os.path.isdir(folder_path):
+            
             
             file_names = os.listdir(folder_path)
             
             sldprt_files = [file_name for file_name in file_names if file_name.endswith('.SLDPRT') and not file_name.startswith('~$')]
             sldasm_files = [file_name for file_name in file_names if file_name.endswith('.SLDASM') and not file_name.startswith('~$')]
+            notfiltered_sldasm = sldasm_files
+            sldasm_files = []
+            for sldprt_file in notfiltered_sldasm:
+                if not sldprt_file.startswith("~") and not sldprt_file.startswith("$"):
+                    sldasm_files.append(sldprt_file)
+            
             #if there are more than one sldasm file, show a message error
             if len(sldasm_files) > 1:
                 self.drop_area.config(text="Hay más de un ensamblaje en la carpeta, envíe sólo uno.")
             elif sldprt_files:
-                self.drop_area.config(text="Procesando carpeta...")
+                
                 time.sleep(1)
             
                 # Call the function from another_module with the file path as a parameter
                 folder(folder_path)
+                time.sleep(1)
                 #finish program
                 self.destroy
+                time.sleep(1)
                 return
 
             else:
-                self.drop_area.config(text="Ingrese una carpeta con piezas de SolidWorks.")
+                self.drop_area.config(text=f"Ingrese una carpeta con piezas de SolidWorks con sólo un ensamblaje. {folder_path}")
         else:
-            self.drop_area.config(text="Ingrese una carpeta con piezas de SolidWorks.")
+            self.drop_area.config(text=f"Ingrese una carpeta con piezas de SolidWorks para continuar. {folder_path} no es una carpeta.")
 
     def check_wifi_connection(self):
         try:
@@ -658,34 +779,11 @@ class SimpleGUI(TkinterDnD.Tk):
         except Exception:
             return False  # No WiFi connection
 
+#"""
 if __name__ == "__main__":
     app = SimpleGUI()
     app.mainloop()
-    
+    log_file.close()  
 
 
-#folder(r"C:\Users\Usuario\Downloads\GAB-PEX-11")
-
-#os.rename(r"C:\Users\Usuario\Downloads\GAB-PEX-11", r"C:\Users\Usuario\Downloads\000 GAB-PEX-11")
-
-data= {"params": 
-{"name": "03619 GAB-PEX-11-B V2", 
-"default_code": 550167, 
-"product_tag_ids": "Piezas", 
-"weight": 1.0420084037, 
-"gross_weight": 1.1209409240831998, 
-"volume": 0.13341977, 
-"superficie": "301092.89", 
-"broad": 251.52, 
-"long": 634.04, 
-"categ_id": "Chapa Galvanizada SAE 1010", 
-"thickness": 0.9, 
-"sale_ok": "true", 
-"purchase_ok": "false", 
-"product_route": "file:///C:/Users/Usuario/Downloads/04955%20GAB-PEX-11/G%2004956%20GAB-PEX-11-B%20V2.2%20CUERPO.SLDPRT", 
-"bill_of_materials": [{
-  "default_code": 20013, 
-  "product_qty": 1.1209409240831998
-}]}}
-
-#func_update_url(data["params"])
+#folder(r"C:\Users\Usuario\Pictures\09131 Bandeja - copia")
