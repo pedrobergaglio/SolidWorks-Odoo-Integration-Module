@@ -96,7 +96,90 @@ def clean_data_files():
     clean_text_file_content("Grosor")
     clean_text_file_content("Error")
 
-def ensamble_odoo(ensamble, folder_path):
+def enviar_pieza(pieza):
+    global error
+
+    #send request to odoo
+
+    global create_url
+
+    #pop quantity out of the dictionary
+    data = pieza.copy()
+    data.pop("quantity")
+    #print(pieza)
+    
+    #do request
+    params_pieza = {"params": data}
+    #add accept header
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+    }
+
+    # Convert data to JSON format
+    json_data = json.dumps(params_pieza)
+    print(datetime.datetime.now(), json_data)
+
+    
+
+    # Check response
+    try:
+        # Send POST request
+        response = requests.get(create_url, data=json_data, headers=headers)    
+
+        if 404 == response.status_code:
+            messagebox.showerror("Error en el envío", f"Se debe activar la integración del módulo con Odoo.")
+            error_message = response.json()['result']['message']
+            print(datetime.datetime.now(), error_message)
+            error = True
+            return
+        
+        if response.json()["result"]['status'] == "Error":
+            
+            error_message = response.json()['result']['message']
+            if "Expected singleton" in error_message:
+                error_message = f"La pieza {ensamble['name']} ya existe en la base de datos."
+                print(datetime.datetime.now(), error_message)
+            else:
+                messagebox.showerror("Error en el envío", f"{error_message}")
+                print(datetime.datetime.now(), error_message)
+            return
+            
+            
+
+        if response.json()["result"]['status'] != "Ok":
+            error_message = response.json()['result']['message']
+            if "Expected singleton" in error_message:
+                error_message = f"La pieza {ensamble['name']} ya existe en la base de datos."
+                print(datetime.datetime.now(), error_message)
+            else: 
+                messagebox.showerror("Request Failed", f"Request failed. Error status: {error_message}")
+                print(datetime.datetime.now(), f"Request failed. Error message: {error_message}")
+                error = True
+            return
+    except Exception as e:
+        if 404 == response.status_code:
+            messagebox.showerror("Error en el envío", f"Se debe activar la integración del módulo con Odoo.")
+            print(datetime.datetime.now(), response.status_code)
+            error = True
+            return
+        messagebox.showerror("Error en el envío", f"El envío sufrió un error inesperado. Por favor intente más tarde")
+        print(datetime.datetime.now(), f"Request failed. Error status: {str(e)}")
+        print(json_data)
+        error = True
+        return
+
+    # Get response data
+    #response_data = response.json()
+    pieza["id"] = response.json()["result"]["default_code"]
+    #actualizo el nombre de la pieza agregando el codigo recibido al final del nombre
+    pieza["old_name"] = pieza["name"]
+    pieza["name"] = pieza["name"] + " " + pieza["id"]
+
+    #call function to update the url
+    update_url(pieza)
+
+def enviar_ensamble(ensamble, folder_path):
     global error
     
     global create_url
@@ -148,7 +231,16 @@ def ensamble_odoo(ensamble, folder_path):
             print(datetime.datetime.now(), f"Request failed. Error status: {str(e)}")
             print(json_data)
             error = True
-            
+
+    # Get response data
+    #response_data = response.json()
+    ensamble["id"] = response.json()["result"]["default_code"]
+    #actualizo el nombre de la pieza agregando el codigo recibido al final del nombre
+    ensamble["old_name"] = ensamble["name"]
+    ensamble["name"] = ensamble["name"] + " " + ensamble["id"]   
+
+    #call function to update the url
+    update_url(ensamble)  
 
     return
     # Get response data
@@ -166,81 +258,6 @@ def ensamble_odoo(ensamble, folder_path):
     new_folder_path = os.sep.join(folder_path_parts)
 
     os.rename(folder_path, new_folder_path)
-
-def insert_pieza_odoo(pieza):
-    global error
-
-    #send request to odoo
-
-    global create_url
-
-    #pop quantity out of the dictionary
-    data = pieza.copy()
-    data.pop("quantity")
-    #print(pieza)
-    
-    #do request
-    params_pieza = {"params": data}
-    #add accept header
-    headers = {
-        "Accept": "application/json",
-        "Content-Type": "application/json"
-    }
-
-    # Convert data to JSON format
-    json_data = json.dumps(params_pieza)
-    print(datetime.datetime.now(), json_data)
-
-    
-
-    # Check response
-    try:
-        # Send POST request
-        response = requests.get(create_url, data=json_data, headers=headers)    
-
-        if 404 == response.status_code:
-            messagebox.showerror("Error en el envío", f"Se debe activar la integración del módulo con Odoo.")
-            error_message = response.json()['result']['message']
-            print(datetime.datetime.now(), error_message)
-            error = True
-            return
-        
-        if response.json()["result"]['status'] == "Error":
-            
-            error_message = response.json()['result']['message']
-            if "Expected singleton" in error_message:
-                error_message = f"La pieza {ensamble['name']} ya existe en la base de datos."
-                print(datetime.datetime.now(), error_message)
-            messagebox.showerror("Error en el envío", f"{error_message}")
-            print(datetime.datetime.now(), error_message)
-            return
-            
-            
-
-        if response.json()["result"]['status'] != "Ok":
-            error_message = response.json()['result']['message']
-            if "Expected singleton" in error_message:
-                error_message = f"La pieza {ensamble['name']} ya existe en la base de datos."
-                print(datetime.datetime.now(), error_message)
-            messagebox.showerror("Request Failed", f"Request failed. Error status: {error_message}")
-            print(datetime.datetime.now(), f"217 Request failed. Error message: {error_message}")
-            error = True
-            return
-    except Exception as e:
-        if 404 == response.status_code:
-            messagebox.showerror("Error en el envío", f"Se debe activar la integración del módulo con Odoo.")
-            print(datetime.datetime.now(), response.status_code)
-            error = True
-            return
-        messagebox.showerror("Error en el envío", f"El envío sufrió un error inesperado. Por favor intente más tarde")
-        print(datetime.datetime.now(), f"Request failed. Error status: {str(e)}")
-        print(json_data)
-        error = True
-        return
-
-    # Get response data
-    #response_data = response.json()
-    pieza["id"] = response.json()["result"]["default_code"]
 
 def ordenar_valores (ancho, largo, grosor):
     global error
@@ -267,7 +284,7 @@ def ordenar_valores (ancho, largo, grosor):
 
     return ancho, largo, grosor
 
-def process_sldasm(sldasm_files, folder_path):
+def procesar_ensamble(sldasm_files, folder_path):
         global error
 
     #escribir la ruta en el archivo input
@@ -388,7 +405,7 @@ def process_sldasm(sldasm_files, folder_path):
         }
         print(ensamble)
 
-def process_sldprt(sldprt_file, folder_path):
+def procesar_pieza(sldprt_file, folder_path):
         global error
 
     #escribir la ruta en el archivo input
@@ -571,29 +588,52 @@ def process_sldprt(sldprt_file, folder_path):
 
         print(pieza)
 
-"""def update_url_pieza(pieza):
+def update_url(archivo):
     global error
 
     #send request to odoo
-    global update_url
-    
-    #generar url
-    global new_folder_path
-    file_url = new_folder_path + "/" + pieza["name"] + ".SLDPRT"
+    try:
+        global update_url
 
-    pieza["product_route"] = file_url
+        if archivo["product_tag_ids"] == "Conjunto":
+            extension = ".SLDASM"
+        else:
+            extension = ".SLDPRT"
 
-    # Convert data to JSON format
-    json_data = json.dumps(pieza)
+        #rename the file with the new name
+        old_name = archivo["old_name"] + extension
+        new_name = archivo["name"] + extension
+        try:
+            os.rename(os.path.join(folder_path, old_name), os.path.join(folder_path, new_name))
+        except Exception as e:
+            messagebox.showerror("Error al renombrar archivo", f"No se pudo renombrar el archivo {old_name}. Error: {str(e)}")
+            print(datetime.datetime.now(), f"Error al renombrar archivo {old_name}. Error: {str(e)}")
+            error = True
+            return
+        
+        #generar url
+        global new_folder_path
+        file_url = new_folder_path + "/" + archivo["name"] + extension
 
-    # Send POST request
-    response = requests.get(url, auth=(username, password), data=json_data)
+        archivo["product_route"] = file_url
 
-    # Check response
-    if response.status_code != "Ok":
-        print(datetime.datetime.now(), f"Request failed. Status code: {response.status_code}")
-        return
-"""
+        # Convert data to JSON format
+        json_data = json.dumps(archivo)
+
+        # Send POST request
+        response = requests.get(update_url, data=json_data)
+
+        # Check response
+        if response.status_code != "Ok":
+            print(datetime.datetime.now(), f"Request failed. Status code: {response.status_code}")
+            return
+        
+    except Exception as e:
+        messagebox.showerror("Error en el envío", f"Se modificó el nombre pero no se pudo actualizar la URL del archivo {archivo['name']} en Odoo. Por favor, actualice manualmente.")
+        print(datetime.datetime.now(), f"Request failed. Error status: {str(e)}")
+        print(json_data)
+        error = True
+
 #main donde inicia el procesamiento de la carpeta
 def folder(input_folder_path):
     global error
@@ -638,14 +678,14 @@ def folder(input_folder_path):
     #procesar cada pieza sldprt
     for sldprt_file in sldprt_files:
         if not sldprt_file.startswith("~") and not sldprt_file.startswith("$"):
-            process_sldprt(sldprt_file, folder_path)
+            procesar_pieza(sldprt_file, folder_path)
             if error == True:
                 return
             print("Pieza analizada")
 
     for pieza in piezas:
         print(datetime.datetime.now(), pieza['name'])
-        insert_pieza_odoo(pieza)
+        enviar_pieza(pieza)
         if error == True:
             return
         print("Pieza enviada")
@@ -655,10 +695,11 @@ def folder(input_folder_path):
     #check if there is a sldasm file
     if sldasm_files:
 
-        process_sldasm(sldasm_files, folder_path)
+        procesar_ensamble(sldasm_files, folder_path)
         if error == True:
             return
-        ensamble_odoo(ensamble, folder_path)
+        print("Ensamble analizado")
+        enviar_ensamble(ensamble, folder_path)
         if error == True:
             return
         print("Ensamble enviado")
@@ -787,3 +828,4 @@ if __name__ == "__main__":
 
 
 #folder(r"C:\Users\Usuario\Pictures\09131 Bandeja - copia")
+
