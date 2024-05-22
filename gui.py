@@ -7,7 +7,7 @@ import socket
 import tkinter.messagebox as messagebox
 import requests
 import json
-import win32com.client
+#import win32com.client
 import pandas as pd
 import random
 import sys
@@ -16,8 +16,8 @@ import datetime
 # Open the log file in append mode
 log_file = open(r"C:\SolidWorks Data\Envío de piezas a Odoo\logfile.log", 'a')
 
-sys.stdout = log_file
-sys.stderr = log_file
+#sys.stdout = log_file
+#sys.stderr = log_file
 
 # Specify your macro name agui.pynd part file path
 macro_name = r"C:\SolidWorks Data\Envío de piezas a Odoo\main.swp"
@@ -138,7 +138,8 @@ def enviar_pieza(pieza):
             
             error_message = response.json()['result']['message']
             if "Expected singleton" in error_message:
-                error_message = f"La pieza {ensamble['name']} ya existe en la base de datos."
+                error_message = f"La pieza {data['name']} ya existe en la base de datos."
+                messagebox.showerror("Error en el envío", error_message )
                 print(datetime.datetime.now(), error_message)
             else:
                 messagebox.showerror("Error en el envío", f"{error_message}")
@@ -150,7 +151,8 @@ def enviar_pieza(pieza):
         if response.json()["result"]['status'] != "Ok":
             error_message = response.json()['result']['message']
             if "Expected singleton" in error_message:
-                error_message = f"La pieza {ensamble['name']} ya existe en la base de datos."
+                error_message = f"La pieza {data['name']} ya existe en la base de datos."
+                messagebox.showerror("Error en el envío", error_message )
                 print(datetime.datetime.now(), error_message)
             else: 
                 messagebox.showerror("Request Failed", f"Request failed. Error status: {error_message}")
@@ -158,6 +160,17 @@ def enviar_pieza(pieza):
                 error = True
             return
     except Exception as e:
+        if response.json()["result"]['status'] != "Ok":
+            error_message = response.json()['result']['message']
+            if "Expected singleton" in error_message:
+                error_message = f"La pieza {data['name']} ya existe en la base de datos."
+                messagebox.showerror("Error en el envío", error_message)
+                print(datetime.datetime.now(), error_message)
+            else: 
+                messagebox.showerror("Request Failed", f"Request failed. Error status: {error_message}")
+                print(datetime.datetime.now(), f"Request failed. Error message: {error_message}")
+                error = True
+            return
         if 404 == response.status_code:
             messagebox.showerror("Error en el envío", f"Se debe activar la integración del módulo con Odoo.")
             print(datetime.datetime.now(), response.status_code)
@@ -216,7 +229,8 @@ def enviar_ensamble(ensamble, folder_path):
 
             error_message = response.json()['result']['message']
             if "Expected singleton" in error_message:
-                error_message = f"La pieza {ensamble['name']} ya existe en la base de datos."
+                error_message = f"El ensamble {ensamble['name']} ya existe en la base de datos."
+                messagebox.showerror("Error en el envío", error_message )
                 print(datetime.datetime.now(), error_message)
                 
             if response:
@@ -633,7 +647,7 @@ def update_url(archivo):
         print(datetime.datetime.now(), f"Request failed. Error status: {str(e)}")
         print(json_data)
         error = True
-
+"""
 #main donde inicia el procesamiento de la carpeta
 def folder(input_folder_path):
     global error
@@ -656,24 +670,7 @@ def folder(input_folder_path):
         global error
         swApp = win32com.client.Dispatch("SldWorks.Application")
 
-        """print("SolidWorks no está abierto. Abriendo SolidWorks...")
-        swApp = win32com.client.Dispatch("SldWorks.Application")
-        start_time = time.time()
-
-        while True:
-            try:
-                swApp = win32com.client.GetObject("SldWorks.Application")
-                break
-            except:
-                time.sleep(1)
-
-                # Check if 1 minute has passed
-                elapsed_time = time.time() - start_time
-                if elapsed_time > 60:
-                    messagebox.showerror("SolidWorks Error", "SolidWorks no pudo ser iniciado.")
-                    return
-                    break
-                continue"""
+        
            
     #procesar cada pieza sldprt
     for sldprt_file in sldprt_files:
@@ -708,7 +705,7 @@ def folder(input_folder_path):
     print(datetime.datetime.now(), "Proceso finalizado.")
     messagebox.showinfo("SolidWorks", "Proceso finalizado.")
     return
-
+"""
 
 
 class SimpleGUI(TkinterDnD.Tk):
@@ -820,12 +817,36 @@ class SimpleGUI(TkinterDnD.Tk):
         except Exception:
             return False  # No WiFi connection
 
-#"""
+"""
 if __name__ == "__main__":
     app = SimpleGUI()
     app.mainloop()
     log_file.close()  
 
-
+"""
 #folder(r"C:\Users\Usuario\Pictures\09131 Bandeja - copia")
 
+piezas = []
+ensamble = {}
+
+folder_path = "/Users/pedrobergaglio/Downloads"
+"/Users/pedrobergaglio/Downloads/pueba99.SLDPRT"
+
+enviar_pieza({
+    'name': 'prueba99',
+    'quantity': 1,
+    'default_code': 1,
+    'product_tag_ids': 'Piezas',
+    'weight': 3.0,
+    'gross_weight': 0.0,
+    'volume': 500.0,
+    'superficie': 200.0,
+    'broad': 140.0,
+    'long': 250.0,
+    'categ_id': 'Chapa Galvanizada SAE 1010',
+    'thickness': '0.9',
+    'sale_ok': 'true',
+    'purchase_ok': 'false',
+    'product_route': 'Bandeja gVggf',
+    'bill_of_materials': [{'default_code': 20013, 'product_qty': 1.0}]
+})
