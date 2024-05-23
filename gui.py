@@ -7,7 +7,7 @@ import socket
 import tkinter.messagebox as messagebox
 import requests
 import json
-#import win32com.client
+import win32com.client
 import pandas as pd
 import random
 import sys
@@ -16,8 +16,8 @@ import datetime
 # Open the log file in append mode
 log_file = open(r"C:\SolidWorks Data\Envío de piezas a Odoo\logfile.log", 'a')
 
-#sys.stdout = log_file
-#sys.stderr = log_file
+sys.stdout = log_file
+sys.stderr = log_file
 
 # Specify your macro name agui.pynd part file path
 macro_name = r"C:\SolidWorks Data\Envío de piezas a Odoo\main.swp"
@@ -29,6 +29,7 @@ swApp = None
 
 ensamble = {}
 piezas = []
+dont_replace = []
 
 error = False
 
@@ -44,7 +45,7 @@ peso_especifico = pd.read_excel("peso-especifico.xlsx")
 #print(peso_especifico.head())
 
 create_url = "http://ec2-3-15-193-242.us-east-2.compute.amazonaws.com:8069/itec-api/create/product"
-update_url = "http://ec2-3-15-193-242.us-east-2.compute.amazonaws.com:8069/itec-api/update/product"
+update_odoo_url = "http://ec2-3-15-193-242.us-east-2.compute.amazonaws.com:8069/itec-api/update/product"
 
 def run_solidworks_macro(swApp, macro_name):
     global error
@@ -102,6 +103,7 @@ def enviar_pieza(pieza):
     #send request to odoo
 
     global create_url
+    global dont_replace
 
     #pop quantity out of the dictionary
     data = pieza.copy()
@@ -133,44 +135,28 @@ def enviar_pieza(pieza):
             print(datetime.datetime.now(), error_message)
             error = True
             return
-        
-        if response.json()["result"]['status'] == "Error":
-            
-            error_message = response.json()['result']['message']
-            if "Expected singleton" in error_message:
-                error_message = f"La pieza {data['name']} ya existe en la base de datos."
-                messagebox.showerror("Error en el envío", error_message )
-                print(datetime.datetime.now(), error_message)
-            else:
-                messagebox.showerror("Error en el envío", f"{error_message}")
-                print(datetime.datetime.now(), error_message)
-            return
-            
             
 
         if response.json()["result"]['status'] != "Ok":
             error_message = response.json()['result']['message']
             if "Expected singleton" in error_message:
                 error_message = f"La pieza {data['name']} ya existe en la base de datos."
-                messagebox.showerror("Error en el envío", error_message )
+                #messagebox.showerror("Error en el envío", error_message )
+                dont_replace.append(data['name'])
                 print(datetime.datetime.now(), error_message)
-            else: 
-                messagebox.showerror("Request Failed", f"Request failed. Error status: {error_message}")
-                print(datetime.datetime.now(), f"Request failed. Error message: {error_message}")
-                error = True
-            return
-    except Exception as e:
-        if response.json()["result"]['status'] != "Ok":
-            error_message = response.json()['result']['message']
-            if "Expected singleton" in error_message:
+            elif "El código de producto" in error_message:
                 error_message = f"La pieza {data['name']} ya existe en la base de datos."
-                messagebox.showerror("Error en el envío", error_message)
+                #messagebox.showerror("Error en el envío", error_message )
+                dont_replace.append(data['name'])
                 print(datetime.datetime.now(), error_message)
             else: 
                 messagebox.showerror("Request Failed", f"Request failed. Error status: {error_message}")
                 print(datetime.datetime.now(), f"Request failed. Error message: {error_message}")
                 error = True
             return
+        
+    except Exception as e:
+        
         if 404 == response.status_code:
             messagebox.showerror("Error en el envío", f"Se debe activar la integración del módulo con Odoo.")
             print(datetime.datetime.now(), response.status_code)
@@ -184,10 +170,11 @@ def enviar_pieza(pieza):
 
     # Get response data
     #response_data = response.json()
-    pieza["id"] = response.json()["result"]["default_code"]
+    pieza["default_code"] = response.json()["result"]["default_code"]
     #actualizo el nombre de la pieza agregando el codigo recibido al final del nombre
     pieza["old_name"] = pieza["name"]
-    pieza["name"] = pieza["name"] + " " + pieza["id"]
+    pieza["name"] = pieza["name"] + " " + pieza["default_code"]
+    print(pieza["default_code"])
 
     #call function to update the url
     update_url(pieza)
@@ -218,40 +205,41 @@ def enviar_ensamble(ensamble, folder_path):
 
         if response.json()["result"]['status'] != "Ok":
             error_message = response.json()['result']['message']
-            messagebox.showerror("Error en el envío", f"Mensaje del error: {error_message}")
-            print(datetime.datetime.now(), error_message)
-            error = True
+            if "Expected singleton" in error_message:
+                error_message = f"El ensamble {ensamble['name']} ya existe en la base de datos."
+                #messagebox.showerror("Error en el envío", error_message )
+                dont_replace.append(ensamble['name'])
+                print(datetime.datetime.now(), error_message)
+            elif "El código de producto" in error_message:
+                error_message = f"El ensamble {ensamble['name']} ya existe en la base de datos."
+                #messagebox.showerror("Error en el envío", error_message )
+                dont_replace.append(ensamble['name'])
+                print(datetime.datetime.now(), error_message)
+            else: 
+                messagebox.showerror("Request Failed", f"Request failed. Error status: {error_message}")
+                print(datetime.datetime.now(), f"Request failed. Error message: {error_message}")
+                error = True
             return
 
     except Exception as e:
 
-        try:
-
-            error_message = response.json()['result']['message']
-            if "Expected singleton" in error_message:
-                error_message = f"El ensamble {ensamble['name']} ya existe en la base de datos."
-                messagebox.showerror("Error en el envío", error_message )
-                print(datetime.datetime.now(), error_message)
-                
-            if response:
-                messagebox.showerror("Error en el envío", f"Falló el envío: {error_message}")
-            messagebox.showerror("Error en el envío", f"Falló el envío: {error_message}")
-            print(datetime.datetime.now(), f"Request failed. Error status: {error_message}, {str(e)}")
-            print(json_data)
-            error = True
-            return
-        except:
-            messagebox.showerror("Error en el envío", f"Falló el envío")
+            if 404 == response.status_code:
+                messagebox.showerror("Error en el envío", f"Se debe activar la integración del módulo con Odoo.")
+                print(datetime.datetime.now(), response.status_code)
+                error = True
+                return
+            messagebox.showerror("Error en el envío", f"El envío sufrió un error inesperado. Por favor intente más tarde")
             print(datetime.datetime.now(), f"Request failed. Error status: {str(e)}")
             print(json_data)
             error = True
+            return
 
     # Get response data
     #response_data = response.json()
-    ensamble["id"] = response.json()["result"]["default_code"]
+    ensamble["default_code"] = response.json()["result"]["default_code"]
     #actualizo el nombre de la pieza agregando el codigo recibido al final del nombre
     ensamble["old_name"] = ensamble["name"]
-    ensamble["name"] = ensamble["name"] + " " + ensamble["id"]   
+    ensamble["name"] = ensamble["name"] + " " + ensamble["default_code"]   
 
     #call function to update the url
     update_url(ensamble)  
@@ -373,6 +361,8 @@ def procesar_ensamble(sldasm_files, folder_path):
             
             
             for pieza in piezas:
+                if not pieza["id"] :
+                    continue
                 print(pieza)
                 print(pieza["quantity"])
                 net_weight += float(pieza["weight"])
@@ -570,12 +560,11 @@ def procesar_pieza(sldprt_file, folder_path):
         #save everything in a dictionary
         global piezas
         volumen = float(volumen)/1000000
-        default_code = random.randint(0, 1000000)
 
         pieza = {
             'name': sldprt_file.split(".")[0],
+            "default_value": 0,
             "quantity": quantity,
-            "default_code": default_code,
             "product_tag_ids": "Piezas",
             "weight": net_weight,
             "gross_weight": gross_weight,
@@ -607,7 +596,7 @@ def update_url(archivo):
 
     #send request to odoo
     try:
-        global update_url
+        global update_odoo_url
 
         if archivo["product_tag_ids"] == "Conjunto":
             extension = ".SLDASM"
@@ -617,8 +606,12 @@ def update_url(archivo):
         #rename the file with the new name
         old_name = archivo["old_name"] + extension
         new_name = archivo["name"] + extension
+
+        print(archivo["default_code"])
+
         try:
             os.rename(os.path.join(folder_path, old_name), os.path.join(folder_path, new_name))
+            print(os.path.join(folder_path, new_name))
         except Exception as e:
             messagebox.showerror("Error al renombrar archivo", f"No se pudo renombrar el archivo {old_name}. Error: {str(e)}")
             print(datetime.datetime.now(), f"Error al renombrar archivo {old_name}. Error: {str(e)}")
@@ -626,28 +619,34 @@ def update_url(archivo):
             return
         
         #generar url
-        global new_folder_path
-        file_url = new_folder_path + "/" + archivo["name"] + extension
-
+        #global folder_path
+        file_url = ("file:///"+ folder_path.replace(os.sep, "/") + "/" + pieza["name"] + extension).replace(" ", "%20")
+        #os.path.join("file:///", folder_path, archivo["name"]+extension)
         archivo["product_route"] = file_url
 
         # Convert data to JSON format
-        json_data = json.dumps(archivo)
+        json_data = json.dumps({"params":archivo})
+
+        #add accept header
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json"
+        }
 
         # Send POST request
-        response = requests.get(update_url, data=json_data)
+        response = requests.get(update_odoo_url, data=json_data, headers=headers)
 
         # Check response
-        if response.status_code != "Ok":
+        if response.json()["result"]['status'] != "Ok":
             print(datetime.datetime.now(), f"Request failed. Status code: {response.status_code}")
             return
         
     except Exception as e:
-        messagebox.showerror("Error en el envío", f"Se modificó el nombre pero no se pudo actualizar la URL del archivo {archivo['name']} en Odoo. Por favor, actualice manualmente.")
         print(datetime.datetime.now(), f"Request failed. Error status: {str(e)}")
+        messagebox.showerror("Error en el envío", f"Se modificó el nombre pero no se pudo actualizar la URL del archivo {archivo['name']} en Odoo. Por favor, actualícela manualmente.")
         print(json_data)
         error = True
-"""
+
 #main donde inicia el procesamiento de la carpeta
 def folder(input_folder_path):
     global error
@@ -662,14 +661,13 @@ def folder(input_folder_path):
     sldasm_files = [file_name for file_name in file_names if file_name.endswith('.SLDASM')]
     global ensamble
     global piezas
-
+    
     # Connect to an existing SolidWorks instance or create a new one if not available
     try:
         swApp = win32com.client.GetObject("SldWorks.Application")
     except:
         global error
         swApp = win32com.client.Dispatch("SldWorks.Application")
-
         
            
     #procesar cada pieza sldprt
@@ -679,7 +677,8 @@ def folder(input_folder_path):
             if error == True:
                 return
             print("Pieza analizada")
-
+    
+    
     for pieza in piezas:
         print(datetime.datetime.now(), pieza['name'])
         enviar_pieza(pieza)
@@ -702,11 +701,21 @@ def folder(input_folder_path):
         print("Ensamble enviado")
 
          
-    print(datetime.datetime.now(), "Proceso finalizado.")
-    messagebox.showinfo("SolidWorks", "Proceso finalizado.")
-    return
-"""
+    if dont_replace:
 
+        # Convert the array into a nicely formatted string
+        dont_replace_str = ', '.join(dont_replace)
+
+        if len(dont_replace) == 1:
+            messagebox.showinfo("SolidWorks", f"Proceso finalizado. El archivo {dont_replace_str}, no ha sido enviado al sistema ya que ha sido cargado previamente.")  
+
+        else:
+            messagebox.showinfo("SolidWorks", f"Proceso finalizado. Los archivos {dont_replace_str}, no han sido enviados al sistema ya que han sido cargados previamente.")  
+    else:
+        messagebox.showinfo("SolidWorks", "Proceso finalizado.")
+    
+    print(datetime.datetime.now(), f"Proceso finalizado. Las piezas {dont_replace} no han sido enviadas al sistema ya que ya han sido cargadas previamente")
+    return
 
 class SimpleGUI(TkinterDnD.Tk):
     def __init__(self):
@@ -783,7 +792,8 @@ class SimpleGUI(TkinterDnD.Tk):
             
             #if there are more than one sldasm file, show a message error
             if len(sldasm_files) > 1:
-                self.drop_area.config(text="Hay más de un ensamblaje en la carpeta, envíe sólo uno.")
+                messagebox.showinfo("Envío de archivos", "Hay más de un ensamblaje en la carpeta, envíe sólo uno.")
+
             elif sldprt_files:
                 
                 time.sleep(1)
@@ -817,22 +827,21 @@ class SimpleGUI(TkinterDnD.Tk):
         except Exception:
             return False  # No WiFi connection
 
-"""
+#"""
 if __name__ == "__main__":
     app = SimpleGUI()
     app.mainloop()
     log_file.close()  
 
-"""
-#folder(r"C:\Users\Usuario\Pictures\09131 Bandeja - copia")
+#"""
 
+"""
 piezas = []
 ensamble = {}
 
-folder_path = "/Users/pedrobergaglio/Downloads"
-"/Users/pedrobergaglio/Downloads/pueba99.SLDPRT"
+folder_path = r"C:\sers\pedro\ownloads"
 
-enviar_pieza({
+pieza ={
     'name': 'prueba99',
     'quantity': 1,
     'default_code': 1,
@@ -847,6 +856,33 @@ enviar_pieza({
     'thickness': '0.9',
     'sale_ok': 'true',
     'purchase_ok': 'false',
-    'product_route': 'Bandeja gVggf',
+    'product_route': "file:///C:/Users/pedro/Downloads/prueba99%20W00000412.SDPRT",
     'bill_of_materials': [{'default_code': 20013, 'product_qty': 1.0}]
-})
+}
+
+pieza2 ={
+    'name': 'prueba00',
+    'quantity': 1,
+    'default_code': 1,
+    'product_tag_ids': 'Conjunto',
+    'weight': 3.0,
+    'gross_weight': 0.0,
+    'volume': 500.0,
+    'superficie': 200.0,
+    'broad': 140.0,
+    'long': 250.0,
+    'categ_id': 'Chapa Galvanizada SAE 1010',
+    'thickness': '0.9',
+    'sale_ok': 'true',
+    'purchase_ok': 'false',
+    'product_route': 'file:///C:/Users/pedro/Downloads/prueba00%20W00000455.SLDASM',
+    'bill_of_materials': [{'default_code': 20013, 'product_qty': 1.0}]
+}"""
+
+#piezas=[pieza]
+
+#ensamble = pieza2
+
+#folder(r"C:\Users\pedro\Downloads")
+
+#enviar_pieza(pieza)
