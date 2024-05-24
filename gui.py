@@ -245,21 +245,7 @@ def enviar_ensamble(ensamble, folder_path):
     update_url(ensamble)  
 
     return
-    # Get response data
-    #response_data = response.json()
-    ensamble["id"] = response.json()["result"]["default_code"]
-
-    # Split the folder path
-    folder_path_parts = folder_path.split(os.sep)
     
-    # Edit the last part of the folder path
-    folder_path_parts[-1] = ensamble["id"]+ " " + folder_path_parts[-1]
-    
-    # Join the parts back together
-    global new_folder_path
-    new_folder_path = os.sep.join(folder_path_parts)
-
-    os.rename(folder_path, new_folder_path)
 
 def ordenar_valores (ancho, largo, grosor):
     global error
@@ -361,7 +347,7 @@ def procesar_ensamble(sldasm_files, folder_path):
             
             
             for pieza in piezas:
-                if not pieza["id"] :
+                if not pieza["default_code"] :
                     continue
                 print(pieza)
                 print(pieza["quantity"])
@@ -371,7 +357,7 @@ def procesar_ensamble(sldasm_files, folder_path):
                 print(pieza["quantity"])
                 ids.append({
                     "product_qty": pieza['quantity'],
-                    "default_code": pieza["id"]
+                    "default_code": pieza["default_code"]
                 })
         except Exception as e:
             
@@ -381,7 +367,7 @@ def procesar_ensamble(sldasm_files, folder_path):
                 print("Error:", str(e))
                 messagebox.showerror("Error", "Las piezas del ensamble no están siendo correctamente cargadas por el sistema. Se recomienda cargar manualmente este ensamble con sus piezas.")
                 
-                error = True
+                
                 return
              
             print("Error:", str(e))
@@ -563,7 +549,7 @@ def procesar_pieza(sldprt_file, folder_path):
 
         pieza = {
             'name': sldprt_file.split(".")[0],
-            "default_value": 0,
+            "default_code": 0,
             "quantity": quantity,
             "product_tag_ids": "Piezas",
             "weight": net_weight,
@@ -594,44 +580,49 @@ def procesar_pieza(sldprt_file, folder_path):
 def update_url(archivo):
     global error
 
+
     #send request to odoo
+    
+    global update_odoo_url
+
+    if archivo["product_tag_ids"] == "Conjunto":
+        extension = ".SLDASM"
+    else:
+        extension = ".SLDPRT"
+
+    #rename the file with the new name
+    old_name = archivo["old_name"] + extension
+    new_name = archivo["name"] + extension
+
+    
+
     try:
-        global update_odoo_url
+        os.rename(os.path.join(folder_path, old_name), os.path.join(folder_path, new_name))
+        print(os.path.join(folder_path, new_name))
+    except Exception as e:
+        messagebox.showerror("Error al renombrar archivo", f"No se pudo renombrar el archivo {old_name}. Error: {str(e)}")
+        print(datetime.datetime.now(), f"Error al renombrar archivo {old_name}. Error: {str(e)}")
+        error = True
+        return
+    
+    #generar url
+    #global folder_path
+    file_url = ("file:///"+ folder_path.replace(os.sep, "/") + "/" + archivo["name"] + extension).replace(" ", "%20")
+    #os.path.join("file:///", folder_path, archivo["name"]+extension)
+    archivo["product_route"] = file_url
 
-        if archivo["product_tag_ids"] == "Conjunto":
-            extension = ".SLDASM"
-        else:
-            extension = ".SLDPRT"
+    print(archivo["product_route"])
 
-        #rename the file with the new name
-        old_name = archivo["old_name"] + extension
-        new_name = archivo["name"] + extension
+    #add accept header
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+    }
+    
+    # Convert data to JSON format
+    json_data = json.dumps({"params":archivo})
 
-        print(archivo["default_code"])
-
-        try:
-            os.rename(os.path.join(folder_path, old_name), os.path.join(folder_path, new_name))
-            print(os.path.join(folder_path, new_name))
-        except Exception as e:
-            messagebox.showerror("Error al renombrar archivo", f"No se pudo renombrar el archivo {old_name}. Error: {str(e)}")
-            print(datetime.datetime.now(), f"Error al renombrar archivo {old_name}. Error: {str(e)}")
-            error = True
-            return
-        
-        #generar url
-        #global folder_path
-        file_url = ("file:///"+ folder_path.replace(os.sep, "/") + "/" + pieza["name"] + extension).replace(" ", "%20")
-        #os.path.join("file:///", folder_path, archivo["name"]+extension)
-        archivo["product_route"] = file_url
-
-        # Convert data to JSON format
-        json_data = json.dumps({"params":archivo})
-
-        #add accept header
-        headers = {
-            "Accept": "application/json",
-            "Content-Type": "application/json"
-        }
+    try:
 
         # Send POST request
         response = requests.get(update_odoo_url, data=json_data, headers=headers)
@@ -639,13 +630,19 @@ def update_url(archivo):
         # Check response
         if response.json()["result"]['status'] != "Ok":
             print(datetime.datetime.now(), f"Request failed. Status code: {response.status_code}")
+            print(json_data)
+            return
+        
+        if response.json()["result"]['status'] == "Ok":
+            print(datetime.datetime.now(), f"Se actualizó la ruta de la pieza correctamente: {response.status_code}")
+            print(json_data)
             return
         
     except Exception as e:
         print(datetime.datetime.now(), f"Request failed. Error status: {str(e)}")
         messagebox.showerror("Error en el envío", f"Se modificó el nombre pero no se pudo actualizar la URL del archivo {archivo['name']} en Odoo. Por favor, actualícela manualmente.")
         print(json_data)
-        error = True
+        
 
 #main donde inicia el procesamiento de la carpeta
 def folder(input_folder_path):
@@ -883,6 +880,6 @@ pieza2 ={
 
 #ensamble = pieza2
 
-#folder(r"C:\Users\pedro\Downloads")
+#folder(r"C:\Users\Usuario\Downloads\GAB-PEX-11")
 
 #enviar_pieza(pieza)
