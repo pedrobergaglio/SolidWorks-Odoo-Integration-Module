@@ -38,11 +38,11 @@ new_folder_path = ""
 folder_path = ""
 
 #importar referencias
-espesores = pd.read_excel("espesores.xlsx")
+#espesores = pd.read_excel("espesores.xlsx")
 #print(espesores.head())
-insumos_piezas = pd.read_excel("insumos-piezas.xlsx")
+#insumos_piezas = pd.read_excel("insumos-piezas.xlsx")
 #print(insumos_piezas.head())
-peso_especifico = pd.read_excel("peso-especifico.xlsx")
+#peso_especifico = pd.read_excel("peso-especifico.xlsx")
 #print(peso_especifico.head())
 
 create_url = "http://ec2-3-15-193-242.us-east-2.compute.amazonaws.com:8069/itec-api/create/product"
@@ -327,7 +327,6 @@ def enviar_ensamble(ensamble, folder_path):
 
 
     return
-    
 
 def ordenar_valores (ancho, largo, grosor):
     global error
@@ -806,16 +805,18 @@ class SimpleGUI(TkinterDnD.Tk):
         self.title("METALUX - SOLIDWORKS A ODOO")
         self.geometry("600x300")
 
+        
+
         # Set the background color
         self.configure(bg="white")
 
         # Add window icon
-        icon_path = r".\resources\metalux-logo.ico"
-        self.iconbitmap(icon_path)
+        #icon_path = r".\resources\metalux-logo.ico"
+        #self.iconbitmap(icon_path)
 
         # Company logo label
-        logo_path = r".\resources\metalux brand.png"
-        self.load_logo(logo_path)
+        #logo_path = r".\resources\metalux brand.png"
+        #self.load_logo(logo_path)
 
         # Drag and drop area
         self.drop_area = tk.Label(self, text="Soltar carpeta de proyecto", bg="lightgray", pady=75, padx=180)
@@ -824,6 +825,8 @@ class SimpleGUI(TkinterDnD.Tk):
         # Enable drag and drop functionality
         self.drop_area.drop_target_register(DND_FILES)
         self.drop_area.dnd_bind('<<Drop>>', self.on_drop)
+
+        self.show_results_window()
 
         if not self.check_wifi_connection():
             messagebox.showinfo("Sin conexión a Internet", "Por favor conéctese a Internet y reintente nuevamente.")
@@ -845,9 +848,10 @@ class SimpleGUI(TkinterDnD.Tk):
     
 
     def on_drop(self, event):
+        
+        
 
         self.drop_area.config(text="Procesando carpeta...")
-        
         
         folder_path = event.data#[1:-1]
 
@@ -862,6 +866,7 @@ class SimpleGUI(TkinterDnD.Tk):
         if os.path.isdir(folder_path):
             
             
+
             file_names = os.listdir(folder_path)
             
             sldprt_files = [file_name for file_name in file_names if file_name.endswith('.SLDPRT') and not file_name.startswith('~$')]
@@ -881,10 +886,10 @@ class SimpleGUI(TkinterDnD.Tk):
                 time.sleep(1)
             
                 # Call the function from another_module with the file path as a parameter
-                procesamiento(folder_path)
+                #procesamiento(folder_path)
 
                 # Show a new screen with the results of the processing
-                show_results_window()
+                self. show_results_window()
 
                 time.sleep(1)
                 #finish program
@@ -897,37 +902,135 @@ class SimpleGUI(TkinterDnD.Tk):
         else:
             self.drop_area.config(text=f"Ingrese una carpeta con piezas de SolidWorks para continuar. {folder_path} no es una carpeta.")
 
-        def show_results_window():
-            results_window = tk.Toplevel(app)
-            results_window.title("Resultados del procesamiento")
-            results_window.geometry("600x400")
-            
-            # Set the background color
-            results_window.configure(bg="white")
-            
-            # Display results
-            results_label = tk.Label(results_window, text="Resultados del procesamiento:", bg="white")
-            results_label.pack(pady=10)
-            
-            # Show processed parts
-            for pieza in piezas:
-                pieza_label = tk.Label(results_window, text=f"Pieza: {pieza['name']}", bg="white")
-                pieza_label.pack()
+    def show_results_window(self):
+        results_window = tk.Toplevel(self)
+        results_window.title("Resultados del procesamiento")
+        results_window.geometry("800x500")
 
-            # Show assembly info if present
-            if ensamble:
-                ensamble_label = tk.Label(results_window, text="Ensamble procesado", bg="white")
-                ensamble_label.pack()
-            
-            # Confirmation button
-            confirm_button = tk.Button(results_window, text="Confirmar y enviar", command=lambda: [envio(), results_window.destroy()])
-            confirm_button.pack(pady=20)
-            
-            # Cancel button
-            cancel_button = tk.Button(results_window, text="Cancelar", command=results_window.destroy)
-            cancel_button.pack(pady=5)
+        # Set the background color
+        results_window.configure(bg="white")
+        
 
-    
+        # Use a modern font and color scheme
+        header_font = ("Roboto", 12, "bold")
+        text_font = ("Roboto", 9)
+        header_color = "#CF000A"
+        text_color = "#202020"
+        bg_color = "white"
+
+        # Create a dictionary for translations
+        translations = {
+            "name": "Nombre",
+            "default_code": "Código",
+            "quantity": "Cantidad",
+            "product_tag_ids": "Tipo de producto",
+            "weight": "Peso neto",
+            "gross_weight": "Peso bruto",
+            "volume": "Volumen",
+            "superficie": "Superficie",
+            "broad": "Ancho",
+            "long": "Largo",
+            "sheet_type": "Tipo de chapa",
+            "thickness": "Espesor",
+            "sale_ok": "Disponible para la venta",
+            "purchase_ok": "Disponible para la compra",
+            "product_route": "Link del producto",
+            "bill_of_materials": "Lista de materiales",
+            "surface": "Superficie"
+        }
+
+        # Display results header
+        results_label = tk.Label(results_window, text="Resultados del procesamiento", font=header_font, fg=text_color, bg=bg_color)
+        results_label.pack(pady=10)
+
+        # Create a canvas and a vertical scrollbar
+        canvas = tk.Canvas(results_window, bg=bg_color)
+        scrollbar = tk.Scrollbar(results_window, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg=bg_color)
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(
+                scrollregion=canvas.bbox("all")
+            )
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        # Enable mouse wheel scrolling
+        def _on_mouse_wheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+
+        results_window.bind_all("<MouseWheel>", _on_mouse_wheel)
+
+        # Frame for assembly information
+        if ensamble:
+            ensamble_frame = tk.Frame(scrollable_frame, bg=bg_color)
+            ensamble_frame.pack(padx=20, pady=10, anchor="w")
+
+            ensamble_label = tk.Label(ensamble_frame, text="Ensamble procesado", font=header_font, fg=header_color, bg=bg_color)
+            ensamble_label.grid(row=0, column=0, sticky="w", columnspan=2)
+
+            ensamble_table = tk.Frame(ensamble_frame, bg=bg_color)
+            ensamble_table.grid(row=1, column=0, columnspan=2, sticky="w")
+
+            for row, (key, value) in enumerate(ensamble.items()):
+                translated_key = translations.get(key, key)  # Use translation if available, otherwise use the original key
+                key_label = tk.Label(ensamble_table, text=f"{translated_key}:", font=text_font, fg=text_color, bg=bg_color)
+                key_label.grid(row=row, column=0, sticky="w", padx=(10, 5))
+                value_label = tk.Label(ensamble_table, text=value, font=text_font, fg=text_color, bg=bg_color)
+                value_label.grid(row=row, column=1, sticky="w")
+
+        # Frame for parts information
+        if piezas:
+            piezas_frame = tk.Frame(scrollable_frame, bg=bg_color)
+            piezas_frame.pack(padx=0, pady=10, anchor="w")
+
+            piezas_label = tk.Label(piezas_frame, text="Piezas procesadas:", font=header_font, fg=header_color, bg=bg_color)
+            piezas_label.grid(row=0, column=0, sticky="w", columnspan=2)
+
+            for index, pieza in enumerate(piezas):
+                if index > 0:
+                    # Add a divider between each pieza
+                    divider = tk.Frame(piezas_frame, height=1, bg=text_color)
+                    divider.grid(row=index*2, column=0, columnspan=2, sticky="we", pady=(10, 0))
+                
+                pieza_label = tk.Label(piezas_frame, text=f"Pieza {index + 1}:", font=header_font, fg=text_color, bg=bg_color)
+                pieza_label.grid(row=index*2 + 1, column=0, sticky="w", padx=(20, 5))
+
+                pieza_table = tk.Frame(piezas_frame, bg=bg_color)
+                pieza_table.grid(row=index*2 + 1, column=1, sticky="w")
+
+                for row, (key, value) in enumerate(pieza.items()):
+                    translated_key = translations.get(key, key)  # Use translation if available, otherwise use the original key
+                    key_label = tk.Label(pieza_table, text=f"{translated_key}:", font=text_font, fg=text_color, bg=bg_color)
+                    key_label.grid(row=row, column=0, sticky="w", padx=(10, 5))
+                    value_label = tk.Label(pieza_table, text=value, font=text_font, fg=text_color, bg=bg_color)
+                    value_label.grid(row=row, column=1, sticky="w")
+
+
+        # Frame for buttons
+        button_frame = tk.Frame(scrollable_frame, bg=bg_color)
+        button_frame.pack(pady=20)
+
+        # Confirmation button
+        confirm_button = tk.Button(button_frame, text="Confirmar y enviar", command=lambda: [envio(), results_window.destroy()], bg=text_color, fg='white', font=text_font)
+        confirm_button.grid(row=1, column=0, padx=10)
+
+        # Cancel button
+        cancel_button = tk.Button(button_frame, text="Cancelar", command=results_window.destroy, bg=text_color, fg='white', font=text_font)
+        cancel_button.grid(row=1, column=1, padx=10)
+
+        # Enable text selection
+        for widget in scrollable_frame.winfo_children():
+            widget.bind("<Button-1>", lambda e: widget.focus_set())
+        
+        results_window.lift()  # Brings window to the front
+
     def check_wifi_connection(self):
         try:
             # Create a socket object
@@ -944,15 +1047,16 @@ class SimpleGUI(TkinterDnD.Tk):
         except Exception:
             return False  # No WiFi connection
 
-#"""
+"""
 if __name__ == "__main__":
     app = SimpleGUI()
     app.mainloop()
     log_file.close()  
 
-#"""
-
 """
+
+
+
 piezas = []
 ensamble = {}
 
@@ -969,7 +1073,7 @@ pieza ={
     'superficie': 200.0,
     'broad': 140.0,
     'long': 250.0,
-    'categ_id': 'Chapa Galvanizada SAE 1010',
+    'sheet_type': 'Galvanizada',
     'thickness': '0.9',
     'sale_ok': 'true',
     'purchase_ok': 'false',
@@ -988,18 +1092,28 @@ pieza2 ={
     'superficie': 200.0,
     'broad': 140.0,
     'long': 250.0,
-    'categ_id': 'Chapa Galvanizada SAE 1010',
+    'sheet_type': 'Galvanizada',
     'thickness': '0.9',
     'sale_ok': 'true',
     'purchase_ok': 'false',
     'product_route': 'file:///C:/Users/pedro/Downloads/prueba00%20W00000455.SLDASM',
     'bill_of_materials': [{'default_code': 20013, 'product_qty': 1.0}]
-}"""
+}
 
-#piezas=[pieza]
+piezas = [pieza, pieza2]
 
-#ensamble = pieza2
+ensamble = {
+            'name': 'Prueba',
+            "product_tag_ids": "Conjunto",
+            "volume": 56,
+            "sheet_type": 'Negra',
+            "sale_ok": "true",
+            "purchase_ok": "false",
+            "surface": 2356,
+            "product_route": "Fabricar",
+            #"tracking": "N° de CNC",
+            "product_route": "fileroute"
+        }
 
-#folder(r"C:\Users\Usuario\Downloads\GAB-PEX-11")
-
-#enviar_pieza(pieza)
+app = SimpleGUI()
+app.mainloop()
