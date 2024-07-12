@@ -362,7 +362,8 @@ def procesar_ensamble(sldasm_files, folder_path):
         sldasm_file_path = sldasm_file_path.replace("\\", "/")  # Replace backslashes with forward slashes
 
         #make the file path url
-        sldasm_file_path_url = ("file:///" + sldasm_file_path.replace(" ", "%20"))
+        #sldasm_file_path_url = ("file:///" + sldasm_file_path.replace(" ", "%20"))
+        sldasm_file_path_url = (sldasm_file_path)
 
         
         # Clean the file in path_file and write the sldasm file there
@@ -448,7 +449,7 @@ def procesar_pieza(sldprt_file, folder_path):
         with open(path_file, 'w') as file:
             file.write(sldprt_file_path)
 
-        #clean files
+        #limpiar los archivos mediante los cuales el script se comunica con el macros de solidworks
         clean_data_files()
 
         #correr el macros
@@ -464,7 +465,6 @@ def procesar_pieza(sldprt_file, folder_path):
         run_solidworks_macro(swApp, macro_name)
 
         #abrir el archivo de error
-
         error_text = get_text_file_content("Error")
         if error_text:
             global error
@@ -540,9 +540,13 @@ def procesar_pieza(sldprt_file, folder_path):
             ancho, largo, espesor = ordenar_valores(ancho, largo, espesor)
 
             #calcular espesor
-            espesor_values = espesores['ESPESOR'].values
+
+            #filtrar los espesores permitidos para el material
+            espesores_material = espesores.loc[material_tag.isin(espesores['MATERIALES HABILITADOS'])]
+            #tomar los valores de los espesores
+            espesor_values = espesores_material['ESPESOR'].values
+
             # Find the closest value in espesor_values to espesor
-            
             espesor_found = min(espesor_values, key=lambda x:abs(float(x)-float(espesor)))
             
             #get the value in col STRING in the same row as espesor_found
@@ -694,6 +698,11 @@ def update_url(archivo):
 #Se detectan errores en el #* procesamiento
 def procesamiento(input_folder_path):
 
+    global ensamble
+    global piezas
+    piezas = []
+    ensamble = {}
+
     #global variables
     global error
     global folder_path
@@ -704,9 +713,7 @@ def procesamiento(input_folder_path):
     global sldprt_files    
     sldprt_files = [file_name for file_name in file_names if file_name.endswith('.SLDPRT')]
     sldasm_files = [file_name for file_name in file_names if file_name.endswith('.SLDASM')]
-    global ensamble
-    global piezas
-
+    
     # check and open SolidWorks
     """
     # Connect to an existing SolidWorks instance or create a new one if not available
@@ -865,8 +872,6 @@ class SimpleGUI(TkinterDnD.Tk):
         
         if os.path.isdir(folder_path):
             
-            
-
             file_names = os.listdir(folder_path)
             
             sldprt_files = [file_name for file_name in file_names if file_name.endswith('.SLDPRT') and not file_name.startswith('~$')]
@@ -883,13 +888,13 @@ class SimpleGUI(TkinterDnD.Tk):
 
             elif sldprt_files:
                 
-                time.sleep(1)
+                time.sleep(8)
             
                 # Call the function from another_module with the file path as a parameter
                 #procesamiento(folder_path)
 
                 # Show a new screen with the results of the processing
-                self. show_results_window()
+                self.show_results_window()
 
                 time.sleep(1)
                 #finish program
