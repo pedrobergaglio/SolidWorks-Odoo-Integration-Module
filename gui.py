@@ -200,7 +200,7 @@ def enviar_pieza(pieza):
     print(pieza["default_code"])
 
     #call function to update the url
-    update_url(pieza)
+    #update_url(pieza)
 
 def enviar_ensamble():
 
@@ -314,7 +314,7 @@ def enviar_ensamble():
      
 
     #call function to update the url
-    update_url(ensamble)  
+    #update_url(ensamble)  
     return
 
 def ordenar_valores (ancho, largo, grosor):
@@ -696,7 +696,7 @@ def procesar_pieza(sldprt_file, folder_path):
 
 def update_url(archivo):
     global error
-
+    global folder_path
 
     #send request to odoo
     
@@ -727,8 +727,9 @@ def update_url(archivo):
     #generar url
     #global folder_path
     #file_url = ("file:///"+ folder_path.replace(os.sep, "/") + "/" + archivo["name"] + extension).replace(" ", "%20")
-    file_url = (folder_path.replace(os.sep, "/") + "/" + archivo["name"] + extension)#.replace(os.sep, "/").replace("\\", "/")
     #os.path.join("file:///", folder_path, archivo["name"]+extension)
+    #file_url = (folder_path.replace(os.sep, "/") + "/" + archivo["name"] + extension)#.replace(os.sep, "/").replace("\\", "/")
+    file_url = (folder_path.replace(os.sep, "/") )#+ "/" + archivo["name"] + extension)#.replace(os.sep, "/").replace("\\", "/")
     archivo["product_route"] = file_url
 
     print(archivo["product_route"])
@@ -834,6 +835,7 @@ def envio():
     global sldasm_files
     global sldprt_files
     global dont_replace
+    global new_folder_path
 
     #enviar cada pieza a odoo
     # si alguna está duplicada no va a ser enviada
@@ -855,6 +857,55 @@ def envio():
             return
         print("Ensamble enviado")
 
+
+    # once every product is sent, we have to rename the main folder, and then update every url
+    if not any(word.startswith('W') and word[1:].isdigit() for word in folder_path.split(os.sep)[-1].split()):
+        if sldasm_files and ensamble["default_code"] is not None:
+            #rename with the name of the assembly
+            ensamble_name = ensamble["default_code"]
+            try:
+                new_folder_path = " ".join([folder_path, ensamble_name])
+                os.rename(folder_path, new_folder_path)
+                folder_path = new_folder_path
+                print(f'Renamed folder to {folder_path}')
+            except Exception as e:
+                messagebox.showerror("Error al renombrar archivo", f"No se pudo renombrar la carpeta{folder_path}. Error: {str(e)}")
+                print(datetime.datetime.now(), f"Error al renombrar la carpeta{folder_path}. Error: {str(e)}")
+                return
+
+        else:
+            #rename with the name of the first part in the list
+            try:
+                primer_pieza = piezas[0]
+                pieza_name = primer_pieza["default_code"]
+                new_folder_path = " ".join([folder_path, pieza_name])
+                os.rename(folder_path, new_folder_path)
+                folder_path = new_folder_path
+                print(f'Renamed folder to {folder_path}')
+            except Exception as e:
+                messagebox.showerror("Error al renombrar archivo", f"No se pudo renombrar la carpeta{folder_path}. Error: {str(e)}")
+                print(datetime.datetime.now(), f"Error al renombrar la carpeta{folder_path}. Error: {str(e)}")
+                return
+
+    if sldasm_files:
+        update_url(ensamble)
+        if error == True:
+            return
+        print("Ensamble URL updated")
+    for pieza in piezas:
+        update_url(pieza)
+        if error == True:
+            return
+        print("Pieza URL updated")
+
+
+
+
+
+
+
+
+    #finish#################################
     # Show a message box if there are files that were not replaced   
     if dont_replace:
 
@@ -880,7 +931,6 @@ def envio():
     sldprt_files = []
     sldasm_files = []
     swApp = None
-    global new_folder_path
     new_folder_path = ""
     folder_path = ""
 
@@ -1144,69 +1194,3 @@ if __name__ == "__main__":
     app = SimpleGUI()
     app.mainloop()
     log_file.close()  
-
-#"""
-
-"""
-
-piezas = []
-ensamble = {}
-
-folder_path = r"C:\sers\pedro\ownloads"
-
-pieza ={
-    'name': 'prueba99',
-    'quantity': 1,
-    'default_code': 1,
-    'product_tag_ids': 'Piezas',
-    'weight': 3.0,
-    'gross_weight': 0.0,
-    'volume': 500.0,
-    'superficie': 200.0,
-    'broad': 140.0,
-    'long': 250.0,
-    'sheet_type': 'Galvanizada',
-    'thickness': '0.9',
-    'sale_ok': 'true',
-    'purchase_ok': 'false',
-    'product_route': "file:///C:/Users/pedro/Downloads/prueba99%20W00000412.SDPRT",
-    'bill_of_materials': [{'default_code': 20013, 'product_qty': 1.0}]
-}
-
-pieza2 ={
-    'name': 'prueba00',
-    'quantity': 1,
-    'default_code': 1,
-    'product_tag_ids': 'Conjunto',
-    'weight': 3.0,
-    'gross_weight': 0.0,
-    'volume': 500.0,
-    'superficie': 200.0,
-    'broad': 140.0,
-    'long': 250.0,
-    'sheet_type': 'Galvanizada',
-    'thickness': '0.9',
-    'sale_ok': 'true',
-    'purchase_ok': 'false',
-    'product_route': 'file:///C:/Users/pedro/Downloads/prueba00%20W00000455.SLDASM',
-    'bill_of_materials': [{'default_code': 20013, 'product_qty': 1.0}]
-}
-
-piezas = [pieza, pieza2]
-
-ensamble = {
-            'name': 'Prueba',
-            "product_tag_ids": "Conjunto",
-            "volume": 56,
-            "sheet_type": 'Negra',
-            "sale_ok": "true",
-            "purchase_ok": "false",
-            "surface": 2356,
-            "product_route": "Fabricar",
-            #"tracking": "N° de CNC",
-            "product_route": "fileroute"
-        }
-
-app = SimpleGUI()
-app.mainloop()
-"""
